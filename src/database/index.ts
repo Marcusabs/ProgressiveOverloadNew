@@ -9,10 +9,8 @@ export const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
     return db;
   }
 
-  // Skip database initialization on web platform
-  if (Platform.OS === 'web') {
-    throw new Error('SQLite is not supported on web platform. Please use the mobile app.');
-  }
+  // Initialize database for all platforms including web
+  // SQLite web support is now enabled in app.json
 
   db = await SQLite.openDatabaseAsync('progressive_overload.db');
   

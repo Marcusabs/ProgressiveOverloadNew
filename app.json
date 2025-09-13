@@ -31,7 +31,7 @@
       [
         "expo-sqlite",
         {
-          "enableWeb": false
+          "enableWeb": true
         }
       ]
     ],
