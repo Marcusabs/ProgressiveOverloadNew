@@ -4,14 +4,14 @@
     "slug": "progressive-overload-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "owner": "marcusabs",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#FF6B35"
     },
     "ios": {
       "supportsTablet": true
@@ -19,15 +19,25 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#FF6B35"
       },
       "edgeToEdgeEnabled": false,
       "package": "prpdk.progressive.overload"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "name": "Progressive Overload",
+      "shortName": "Progressive Overload",
+      "description": "Fitness app for progressive overload training",
+      "startUrl": "/",
+      "display": "standalone",
+      "orientation": "portrait",
+      "themeColor": "#FF6B35",
+      "backgroundColor": "#F8F9FA"
     },
     "plugins": [
+      "expo-dev-client",
       [
         "expo-sqlite",
         {

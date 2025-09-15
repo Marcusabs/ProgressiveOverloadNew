@@ -14,21 +14,7 @@ export const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
 
   db = await SQLite.openDatabaseAsync('progressive_overload.db');
   
-  // Drop existing tables to recreate with new schema
-  try {
-    await db.execAsync('DROP TABLE IF EXISTS progress_data');
-    await db.execAsync('DROP TABLE IF EXISTS sets');
-    await db.execAsync('DROP TABLE IF EXISTS workout_exercises');
-    await db.execAsync('DROP TABLE IF EXISTS workouts');
-    await db.execAsync('DROP TABLE IF EXISTS template_exercises');
-    await db.execAsync('DROP TABLE IF EXISTS workout_templates');
-    await db.execAsync('DROP TABLE IF EXISTS exercises');
-    await db.execAsync('DROP TABLE IF EXISTS training_sessions');
-    await db.execAsync('DROP TABLE IF EXISTS muscle_groups');
-  } catch (error) {
-    console.log('Tables already dropped or don\'t exist');
-  }
-  
+  // Only create tables if they don't exist - DON'T drop existing data!
   await createTables(db);
   await seedDefaultExercises(db);
   
