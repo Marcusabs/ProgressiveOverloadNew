@@ -121,5 +121,6 @@ export type RootTabParamList = {
   Home: undefined;
   Training: { initialTab?: 'sessions' | 'exercises' | 'builder' };
   Progress: undefined;
+  WorkoutHistory: undefined;
   Profile: undefined;
 };

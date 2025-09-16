@@ -141,9 +141,35 @@ export const createTables = (db: SQLite.SQLiteDatabase) => {
       created_at TEXT NOT NULL
     );
   `);
+
+  // Create achievements table
+  db.execAsync(`
+    CREATE TABLE IF NOT EXISTS achievements (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      category TEXT NOT NULL,
+      icon TEXT NOT NULL,
+      requirement INTEGER NOT NULL,
+      current_progress INTEGER DEFAULT 0,
+      is_unlocked INTEGER DEFAULT 0,
+      unlocked_at TEXT,
+      points INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+  `);
 };
 
-export const seedDefaultExercises = (db: SQLite.SQLiteDatabase) => {
+export const seedDefaultExercises = async (db: SQLite.SQLiteDatabase) => {
+  // If there are already any training sessions, skip seeding defaults
+  try {
+    const existing = await db.getFirstAsync(`SELECT COUNT(*) as count FROM training_sessions`);
+    if (existing && (existing as any).count > 0) {
+      return;
+    }
+  } catch (e) {
+    // If the COUNT query fails for some reason, continue with cautious seeding below
+  }
   // Seed muscle groups
   const muscleGroups = [
     { id: '1', name: 'Bryst', color: '#FF6B6B', icon: 'fitness', created_at: new Date().toISOString() },

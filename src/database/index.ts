@@ -14,6 +14,15 @@ export const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
 
   db = await SQLite.openDatabaseAsync('progressive_overload.db');
   
+  // Improve concurrency and stability
+  try {
+    await db.execAsync('PRAGMA journal_mode = WAL;');
+    await db.execAsync('PRAGMA foreign_keys = ON;');
+    await db.execAsync('PRAGMA busy_timeout = 5000;');
+  } catch (e) {
+    // Ignore pragma errors; continue with default settings
+  }
+  
   // Only create tables if they don't exist - DON'T drop existing data!
   await createTables(db);
   await seedDefaultExercises(db);

@@ -24,6 +24,7 @@ interface ExerciseState {
   startWorkout: (sessionId: string) => Promise<Workout>;
   endWorkout: (workoutId: string, duration: number, notes?: string) => Promise<void>;
   addSetToExercise: (workoutId: string, exerciseId: string, reps: number, weight: number) => Promise<void>;
+  addWorkout: (workout: Omit<Workout, 'id' | 'created_at'>) => Promise<Workout>;
   getProgressiveOverloadSuggestions: (sessionId: string) => Promise<ProgressiveOverloadSuggestion[]>;
   setSelectedSession: (session: TrainingSession | null) => void;
   setCurrentWorkout: (workout: Workout | null) => void;
@@ -52,17 +53,17 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         ORDER BY e.session_id, e.order_index
       `);
       
-             const exercises: Exercise[] = result.map(row => ({
-         id: row.id,
-         name: row.name,
-         muscle_group_id: row.muscle_group_id,
-         session_id: row.session_id,
-         order_index: row.order_index || 0,
-         description: row.description,
-         equipment: row.equipment,
-         difficulty: row.difficulty,
-         created_at: row.created_at
-       }));
+      const exercises: Exercise[] = result.map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        muscle_group_id: row.muscle_group_id,
+        session_id: row.session_id,
+        order_index: row.order_index || 0,
+        description: row.description,
+        equipment: row.equipment,
+        difficulty: row.difficulty,
+        created_at: row.created_at
+      }));
       
       set({ exercises });
     } catch (error) {
@@ -79,7 +80,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         SELECT * FROM muscle_groups ORDER BY name
       `);
       
-      const muscleGroups: MuscleGroup[] = result.map(row => ({
+      const muscleGroups: MuscleGroup[] = result.map((row: any) => ({
         id: row.id,
         name: row.name,
         color: row.color,
@@ -104,7 +105,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         ORDER BY ts.name
       `);
       
-      const trainingSessions: TrainingSession[] = result.map(row => ({
+      const trainingSessions: TrainingSession[] = result.map((row: any) => ({
         id: row.id,
         name: row.name,
         muscle_group_id: row.muscle_group_id,
@@ -127,7 +128,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       
       // If no session_id, just use order_index 0
       const orderIndex = exerciseData.session_id ? 
-        (await db.getAllAsync(`SELECT COUNT(*) as count FROM exercises WHERE session_id = ?`, [exerciseData.session_id]))[0]?.count + 1 || 1 : 0;
+        ((await db.getAllAsync(`SELECT COUNT(*) as count FROM exercises WHERE session_id = ?`, [exerciseData.session_id]))[0] as any)?.count + 1 || 1 : 0;
       
       await db.runAsync(`
         INSERT INTO exercises (id, name, muscle_group_id, session_id, order_index, description, equipment, difficulty, created_at)
@@ -211,7 +212,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         SELECT COUNT(*) as count FROM workout_exercises WHERE exercise_id = ?
       `, [id]);
       
-      if (workoutUsage[0].count > 0) {
+      if ((workoutUsage[0] as any).count > 0) {
         throw new Error('Cannot delete exercise that is used in workouts.');
       }
       
@@ -260,7 +261,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       await db.runAsync(`
         INSERT INTO training_sessions (id, name, muscle_group_id, description, is_active, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
-      `, [id, sessionData.name, sessionData.muscle_group_id, sessionData.description, 
+      `, [id, sessionData.name, sessionData.muscle_group_id, sessionData.description || '', 
           sessionData.is_active ? 1 : 0, created_at]);
       
       const newSession: TrainingSession = {
@@ -324,29 +325,39 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
   deleteTrainingSession: async (id) => {
     try {
       const db = getDatabase();
-      
-      // Check if session has exercises
-      const exercises = await db.getAllAsync(`
-        SELECT COUNT(*) as count FROM exercises WHERE session_id = ?
-      `, [id]);
-      
-      console.log('Checking exercises for session:', id, 'Count:', exercises[0].count);
-      
-      if (exercises[0].count > 0) {
-        // Let's also check which exercises are still linked
-        const linkedExercises = await db.getAllAsync(`
-          SELECT id, name, session_id FROM exercises WHERE session_id = ?
-        `, [id]);
-        console.log('Linked exercises:', linkedExercises);
-        throw new Error('Cannot delete session with exercises. Remove exercises first.');
-      }
-      
+
+      // Perform dependent deletions to satisfy FK constraints
+      await db.execAsync('BEGIN');
+      await db.runAsync(
+        `DELETE FROM sets WHERE workout_exercise_id IN (
+           SELECT id FROM workout_exercises WHERE workout_id IN (
+             SELECT id FROM workouts WHERE session_id = ?
+           )
+         )`,
+        [id]
+      );
+      await db.runAsync(
+        `DELETE FROM workout_exercises WHERE workout_id IN (
+           SELECT id FROM workouts WHERE session_id = ?
+         )`,
+        [id]
+      );
+      await db.runAsync(
+        `DELETE FROM progress_data WHERE workout_id IN (
+           SELECT id FROM workouts WHERE session_id = ?
+         )`,
+        [id]
+      );
+      await db.runAsync(`DELETE FROM workouts WHERE session_id = ?`, [id]);
+      await db.runAsync(`UPDATE exercises SET session_id = NULL WHERE session_id = ?`, [id]);
       await db.runAsync('DELETE FROM training_sessions WHERE id = ?', [id]);
-      
+      await db.execAsync('COMMIT');
+
       set(state => ({
         trainingSessions: state.trainingSessions.filter(session => session.id !== id)
       }));
     } catch (error) {
+      try { await getDatabase().execAsync('ROLLBACK'); } catch {}
       console.error('Failed to delete training session:', error);
       throw error;
     }
@@ -385,7 +396,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         ORDER BY w.date DESC
       `);
       
-      const workouts: Workout[] = result.map(row => ({
+      const workouts: Workout[] = result.map((row: any) => ({
         id: row.id,
         session_id: row.session_id,
         name: row.name,
@@ -485,14 +496,14 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       const setCount = await db.getFirstAsync(`
         SELECT COUNT(*) as count FROM sets 
         WHERE workout_exercise_id = ?
-      `, [workoutExercise.id]);
+      `, [(workoutExercise as any).id]);
 
-      const setId = `${workoutExercise.id}_${(setCount?.count || 0) + 1}`;
+      const setId = `${(workoutExercise as any).id}_${((setCount as any)?.count || 0) + 1}`;
       
       await db.runAsync(`
         INSERT INTO sets (id, workout_exercise_id, reps, weight, completed, order_index)
         VALUES (?, ?, ?, ?, ?, ?)
-      `, [setId, workoutExercise.id, reps, weight, 1, (setCount?.count || 0) + 1]);
+      `, [setId, (workoutExercise as any).id, reps, weight, 1, ((setCount as any)?.count || 0) + 1]);
 
       console.log('Set added successfully:', { setId, reps, weight });
 
@@ -528,11 +539,12 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
           WHERE we.workout_id = ? AND we.exercise_id = ?
           ORDER BY s.order_index DESC
           LIMIT 3
-        `, [lastWorkout.id, exercise.id]);
+        `, [(lastWorkout as any).id, exercise.id]);
 
         if (lastSets.length > 0) {
-          const avgWeight = lastSets.reduce((sum, set) => sum + set.weight, 0) / lastSets.length;
-          const avgReps = lastSets.reduce((sum, set) => sum + set.reps, 0) / lastSets.length;
+          const setsArr = lastSets as any[];
+          const avgWeight = setsArr.reduce((sum, s) => sum + (s.weight || 0), 0) / setsArr.length;
+          const avgReps = setsArr.reduce((sum, s) => sum + (s.reps || 0), 0) / setsArr.length;
           
           // Progressive overload logic (2.5-5% increase)
           const increasePercentage = avgReps >= 8 ? 0.025 : 0.05; // 2.5% if high reps, 5% if low reps
@@ -562,5 +574,34 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
 
   setCurrentWorkout: (workout) => {
     set({ currentWorkout: workout });
+  },
+
+  addWorkout: async (workoutData) => {
+    try {
+      const db = getDatabase();
+      const id = Date.now().toString();
+      const created_at = new Date().toISOString();
+      
+      await db.runAsync(`
+        INSERT INTO workouts (id, session_id, name, date, notes, completed, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [id, workoutData.session_id, workoutData.name, workoutData.date, 
+          workoutData.notes || '', workoutData.completed ? 1 : 0, created_at]);
+      
+      const newWorkout: Workout = {
+        id,
+        ...workoutData,
+        created_at
+      };
+      
+      set(state => ({
+        workouts: [...state.workouts, newWorkout]
+      }));
+      
+      return newWorkout;
+    } catch (error) {
+      console.error('Failed to add workout:', error);
+      throw error;
+    }
   }
 }));

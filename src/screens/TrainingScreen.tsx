@@ -24,7 +24,7 @@ import { RootTabParamList } from '../types';
 type TrainingScreenRouteProp = RouteProp<RootTabParamList, 'Training'>;
 
 export default function TrainingScreen({ route }: { route: TrainingScreenRouteProp }) {
-  const { trainingSessions, exercises, muscleGroups, loadTrainingSessions, loadExercises, loadMuscleGroups, updateExercise, addExercise, addTrainingSession, updateTrainingSession, deleteTrainingSession, startWorkout, endWorkout, addSetToExercise, getProgressiveOverloadSuggestions, currentWorkout, setCurrentWorkout } = useExerciseStore();
+  const { trainingSessions, exercises, muscleGroups, loadTrainingSessions, loadExercises, loadMuscleGroups, updateExercise, addExercise, deleteExercise, addTrainingSession, updateTrainingSession, deleteTrainingSession, startWorkout, endWorkout, addSetToExercise, getProgressiveOverloadSuggestions, currentWorkout, setCurrentWorkout } = useExerciseStore();
   const { theme, isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'sessions' | 'exercises' | 'builder'>(
     route?.params?.initialTab || 'sessions'
@@ -98,6 +98,13 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
     }
   }, [currentWorkout]);
 
+  // Load progressive overload suggestions when exercise changes
+  useEffect(() => {
+    if (showLiveTraining && currentWorkout) {
+      loadProgressiveOverloadSuggestions();
+    }
+  }, [currentExerciseIndex, showLiveTraining, currentWorkout]);
+
   // Real-time updates for training
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -149,6 +156,28 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
       muscleGroupId: exercise.muscle_group_id
     });
     setShowEditExercise(true);
+  };
+
+  const handleDeleteExercise = (exercise: Exercise) => {
+    Alert.alert(
+      'Slet øvelse',
+      `Er du sikker på at du vil slette "${exercise.name}"? Denne handling kan ikke fortrydes.`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Slet',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteExercise(exercise.id);
+              Alert.alert('Succes', 'Øvelse slettet succesfuldt');
+            } catch (error) {
+              Alert.alert('Fejl', 'Kunne ikke slette øvelse. Den bruges måske i træningssessioner.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleSaveExercise = async () => {
@@ -351,9 +380,137 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
       await addSetToExercise(currentWorkout.id, currentExercise.id, reps, weight);
       setCompletedSets([...completedSets, { reps, weight }]);
       setCurrentSet({ reps: '', weight: '' });
+      
+      // Load progressive overload suggestions after adding a set
+      await loadProgressiveOverloadSuggestions();
     } catch (error) {
       console.error('Error adding set:', error);
       Alert.alert('Fejl', `Kunne ikke tilføje sæt: ${error instanceof Error ? error.message : 'Ukendt fejl'}`);
+    }
+  };
+
+  // Load progressive overload suggestions for current exercise
+  const loadProgressiveOverloadSuggestions = async () => {
+    if (!currentWorkout) return;
+    
+    try {
+      const sessionExercises = getExercisesForSession(currentWorkout.session_id);
+      const currentExercise = sessionExercises[currentExerciseIndex];
+      
+      if (!currentExercise) return;
+
+      // Get previous workout data for this exercise
+      const { getDatabase } = await import('../database');
+      const db = getDatabase();
+      
+      const previousWorkouts = await db.getAllAsync(`
+        SELECT w.*, we.exercise_id, s.reps, s.weight, s.completed
+        FROM workouts w
+        JOIN workout_exercises we ON w.id = we.workout_id
+        JOIN sets s ON we.id = s.workout_exercise_id
+        WHERE we.exercise_id = ? AND w.completed = 1 AND s.completed = 1
+        ORDER BY w.date DESC
+        LIMIT 5
+      `, [currentExercise.id]);
+
+      if (previousWorkouts.length === 0) {
+        // First time doing this exercise
+        setProgressiveOverloadSuggestions([{
+          exerciseId: currentExercise.id,
+          exerciseName: currentExercise.name,
+          currentMaxWeight: 0,
+          suggestedWeight: 20,
+          suggestedReps: 8,
+          reason: 'Første gang du laver denne øvelse. Start med moderat vægt.',
+          type: 'weight'
+        }]);
+        return;
+      }
+
+      // Calculate suggestions based on previous performance
+      const lastWorkout = previousWorkouts[0];
+      const lastMaxWeight = Math.max(...previousWorkouts.slice(0, 1).map(w => w.weight));
+      const lastMaxReps = Math.max(...previousWorkouts.slice(0, 1).map(w => w.reps));
+      
+      const currentMaxWeight = Math.max(...completedSets.map(s => s.weight));
+      const currentMaxReps = Math.max(...completedSets.map(s => s.reps));
+
+      let suggestion;
+      
+      if (completedSets.length === 0) {
+        // No sets completed yet - suggest based on last workout
+        if (lastMaxReps >= 12) {
+          suggestion = {
+            exerciseId: currentExercise.id,
+            exerciseName: currentExercise.name,
+            currentMaxWeight: lastMaxWeight,
+            suggestedWeight: lastMaxWeight + 2.5,
+            suggestedReps: 8,
+            reason: 'Sidste træning var høje reps. Prøv at øge vægten og reducere reps.',
+            type: 'weight'
+          };
+        } else if (lastMaxReps >= 8) {
+          suggestion = {
+            exerciseId: currentExercise.id,
+            exerciseName: currentExercise.name,
+            currentMaxWeight: lastMaxWeight,
+            suggestedWeight: lastMaxWeight + 2.5,
+            suggestedReps: lastMaxReps,
+            reason: 'Øg vægten med 2.5kg fra sidste træning.',
+            type: 'weight'
+          };
+        } else {
+          suggestion = {
+            exerciseId: currentExercise.id,
+            exerciseName: currentExercise.name,
+            currentMaxWeight: lastMaxWeight,
+            suggestedWeight: lastMaxWeight,
+            suggestedReps: lastMaxReps + 1,
+            reason: 'Øg reps med 1 fra sidste træning.',
+            type: 'reps'
+          };
+        }
+      } else {
+        // Analyze current workout performance
+        const weightImprovement = currentMaxWeight - lastMaxWeight;
+        const repsImprovement = currentMaxReps - lastMaxReps;
+
+        if (weightImprovement > 0) {
+          suggestion = {
+            exerciseId: currentExercise.id,
+            exerciseName: currentExercise.name,
+            currentMaxWeight,
+            suggestedWeight: currentMaxWeight + 2.5,
+            suggestedReps: Math.max(6, currentMaxReps - 1),
+            reason: `Fremragende! Du øgede vægten med ${weightImprovement}kg. Prøv at øge med yderligere 2.5kg.`,
+            type: 'weight'
+          };
+        } else if (repsImprovement > 0) {
+          suggestion = {
+            exerciseId: currentExercise.id,
+            exerciseName: currentExercise.name,
+            currentMaxWeight,
+            suggestedWeight: currentMaxWeight + 2.5,
+            suggestedReps: currentMaxReps,
+            reason: `Godt! Du øgede reps med ${repsImprovement}. Prøv nu at øge vægten.`,
+            type: 'weight'
+          };
+        } else {
+          suggestion = {
+            exerciseId: currentExercise.id,
+            exerciseName: currentExercise.name,
+            currentMaxWeight,
+            suggestedWeight: currentMaxWeight,
+            suggestedReps: currentMaxReps,
+            reason: 'Behold nuværende vægt og reps. Fokusér på form og konsistens.',
+            type: 'maintain'
+          };
+        }
+      }
+
+      setProgressiveOverloadSuggestions([suggestion]);
+    } catch (error) {
+      console.error('Error loading progressive overload suggestions:', error);
     }
   };
 
@@ -425,41 +582,58 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
     }
   };
 
-  const handleDeleteSession = async (sessionId: string) => {
-    try {
-      // First, remove exercises from this session using direct database query
-      const { getDatabase } = await import('../database');
-      const db = getDatabase();
-      
-      // Get exercises directly from database
-      const sessionExercises = await db.getAllAsync(`
-        SELECT * FROM exercises WHERE session_id = ?
-      `, [sessionId]);
-      
-      console.log('Removing exercises from session:', sessionId, 'Exercises:', sessionExercises.length);
-      
-      // Update each exercise to remove session_id
-      for (const exercise of sessionExercises) {
-        const exerciseData = exercise as any;
-        console.log('Updating exercise:', exerciseData.id, 'to remove from session');
-        await db.runAsync(`
-          UPDATE exercises SET session_id = NULL, order_index = NULL WHERE id = ?
-        `, [exerciseData.id]);
-      }
-      
-      // Reload exercises to update local state
-      await loadExercises();
-      
-      console.log('All exercises removed, now deleting session:', sessionId);
-      // Then delete the session
-      await deleteTrainingSession(sessionId);
-      
-      Alert.alert('Succes', 'Session slettet!');
-      loadTrainingSessions();
-    } catch (error) {
-      console.error('Error deleting session:', error);
-      Alert.alert('Fejl', `Kunne ikke slette session: ${error instanceof Error ? error.message : 'Ukendt fejl'}`);
-    }
+  const handleDeleteSession = (sessionId: string) => {
+    // Find the session to get its name for the confirmation dialog
+    const session = trainingSessions.find(s => s.id === sessionId);
+    const sessionName = session?.name || 'denne session';
+    
+    Alert.alert(
+      'Slet session',
+      `Er du sikker på at du vil slette "${sessionName}"? Denne handling kan ikke fortrydes.`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Slet',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // First, remove exercises from this session using direct database query
+              const { getDatabase } = await import('../database');
+              const db = getDatabase();
+              
+              // Get exercises directly from database
+              const sessionExercises = await db.getAllAsync(`
+                SELECT * FROM exercises WHERE session_id = ?
+              `, [sessionId]);
+              
+              console.log('Removing exercises from session:', sessionId, 'Exercises:', sessionExercises.length);
+              
+              // Update each exercise to remove session_id
+              for (const exercise of sessionExercises) {
+                const exerciseData = exercise as any;
+                console.log('Updating exercise:', exerciseData.id, 'to remove from session');
+                await db.runAsync(`
+                  UPDATE exercises SET session_id = NULL, order_index = NULL WHERE id = ?
+                `, [exerciseData.id]);
+              }
+              
+              // Reload exercises to update local state
+              await loadExercises();
+              
+              console.log('All exercises removed, now deleting session:', sessionId);
+              // Then delete the session
+              await deleteTrainingSession(sessionId);
+              
+              Alert.alert('Succes', 'Session slettet!');
+              loadTrainingSessions();
+            } catch (error) {
+              console.error('Error deleting session:', error);
+              Alert.alert('Fejl', `Kunne ikke slette session: ${error instanceof Error ? error.message : 'Ukendt fejl'}`);
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Exercise creation functions
@@ -629,6 +803,12 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                   >
                     <Ionicons name="create" size={16} color={theme.colors.secondary} />
                   </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.actionButton, { backgroundColor: theme.colors.divider }]}
+                    onPress={() => handleDeleteExercise(exercise)}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#FF6B6B" />
+                  </TouchableOpacity>
                 </View>
               </View>
             ))}
@@ -666,7 +846,10 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                 <TouchableOpacity style={[styles.builderActionButton, { backgroundColor: theme.colors.divider }]}>
                   <Ionicons name="create" size={16} color={theme.colors.secondary} />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.builderActionButton, { backgroundColor: theme.colors.divider }]}>
+                <TouchableOpacity 
+                  style={[styles.builderActionButton, { backgroundColor: theme.colors.divider }]}
+                  onPress={() => handleDeleteSession(session.id)}
+                >
                   <Ionicons name="trash" size={16} color={theme.colors.accent} />
                 </TouchableOpacity>
               </View>
@@ -1086,6 +1269,72 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                         </View>
                       ))}
                     </View>
+                  </View>
+                )}
+
+                {/* Progressive Overload Suggestions */}
+                {progressiveOverloadSuggestions.length > 0 && (
+                  <View style={styles.progressiveOverloadSection}>
+                    <View style={styles.progressiveOverloadHeader}>
+                      <Ionicons name="trending-up" size={20} color={theme.colors.primary} />
+                      <Text style={[styles.progressiveOverloadTitle, { color: theme.colors.text }]}>
+                        Progressive Overload Forslag
+                      </Text>
+                    </View>
+                    
+                    {progressiveOverloadSuggestions.map((suggestion, index) => (
+                      <View key={index} style={[styles.suggestionCard, { backgroundColor: theme.colors.card }]}>
+                        <View style={styles.suggestionHeader}>
+                          <Text style={[styles.suggestionExercise, { color: theme.colors.text }]}>
+                            {suggestion.exerciseName}
+                          </Text>
+                          <View style={[styles.suggestionType, { 
+                            backgroundColor: suggestion.type === 'weight' ? '#FF6B35' : 
+                                           suggestion.type === 'reps' ? '#4ECDC4' : '#96CEB4'
+                          }]}>
+                            <Text style={styles.suggestionTypeText}>
+                              {suggestion.type === 'weight' ? 'VÆGT' : 
+                               suggestion.type === 'reps' ? 'REPS' : 'MAINTAIN'}
+                            </Text>
+                          </View>
+                        </View>
+                        
+                        <View style={styles.suggestionContent}>
+                          <View style={styles.suggestionValues}>
+                            <View style={styles.suggestionValue}>
+                              <Text style={[styles.suggestionLabel, { color: theme.colors.textSecondary }]}>Nuværende</Text>
+                              <Text style={[styles.suggestionValueText, { color: theme.colors.text }]}>
+                                {suggestion.currentMaxWeight}kg × {completedSets.length > 0 ? Math.max(...completedSets.map(s => s.reps)) : '?'} reps
+                              </Text>
+                            </View>
+                            <Ionicons name="arrow-forward" size={16} color={theme.colors.textTertiary} />
+                            <View style={styles.suggestionValue}>
+                              <Text style={[styles.suggestionLabel, { color: theme.colors.textSecondary }]}>Forslået</Text>
+                              <Text style={[styles.suggestionValueText, { color: theme.colors.primary }]}>
+                                {suggestion.suggestedWeight}kg × {suggestion.suggestedReps} reps
+                              </Text>
+                            </View>
+                          </View>
+                          
+                          <Text style={[styles.suggestionReason, { color: theme.colors.textSecondary }]}>
+                            {suggestion.reason}
+                          </Text>
+                          
+                          <TouchableOpacity
+                            style={[styles.applySuggestionButton, { backgroundColor: theme.colors.primary }]}
+                            onPress={() => {
+                              setCurrentSet({ 
+                                reps: suggestion.suggestedReps.toString(), 
+                                weight: suggestion.suggestedWeight.toString() 
+                              });
+                            }}
+                          >
+                            <Ionicons name="checkmark" size={16} color="#fff" />
+                            <Text style={styles.applySuggestionText}>Anvend forslag</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
                   </View>
                 )}
 
@@ -2036,5 +2285,89 @@ const styles = StyleSheet.create({
   },
   selectedMuscleGroup: {
     backgroundColor: '#007AFF',
+  },
+  // Progressive Overload Styles
+  progressiveOverloadSection: {
+    marginBottom: 20,
+  },
+  progressiveOverloadHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  progressiveOverloadTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  suggestionCard: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  suggestionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  suggestionExercise: {
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+  },
+  suggestionType: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  suggestionTypeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  suggestionContent: {
+    gap: 12,
+  },
+  suggestionValues: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  suggestionValue: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  suggestionLabel: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  suggestionValueText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  suggestionReason: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontStyle: 'italic',
+  },
+  applySuggestionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 6,
+  },
+  applySuggestionText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

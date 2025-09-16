@@ -22,6 +22,7 @@ export default function ExercisesScreen() {
     loadExercises,
     searchExercises,
     filterByCategory,
+    deleteExercise,
   } = useExerciseStore();
   
   const { addExerciseToWorkout, currentWorkout } = useWorkoutStore();
@@ -56,6 +57,28 @@ export default function ExercisesScreen() {
     );
   };
 
+  const handleDeleteExercise = (exercise: Exercise) => {
+    Alert.alert(
+      'Delete Exercise',
+      `Are you sure you want to delete "${exercise.name}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteExercise(exercise.id);
+              Alert.alert('Success', 'Exercise deleted successfully');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete exercise. It may be used in workouts.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
       case 'beginner': return '#4CAF50';
@@ -66,42 +89,51 @@ export default function ExercisesScreen() {
   };
 
   const renderExercise = ({ item }: { item: Exercise }) => (
-    <TouchableOpacity
-      style={styles.exerciseCard}
-      onPress={() => handleAddToWorkout(item)}
-    >
-      <View style={styles.exerciseHeader}>
-        <Text style={styles.exerciseName}>{item.name}</Text>
-        <View style={[styles.difficultyBadge, { backgroundColor: getDifficultyColor(item.difficulty) }]}>
-          <Text style={styles.difficultyText}>{item.difficulty}</Text>
+    <View style={styles.exerciseCard}>
+      <TouchableOpacity
+        style={styles.exerciseContent}
+        onPress={() => handleAddToWorkout(item)}
+      >
+        <View style={styles.exerciseHeader}>
+          <Text style={styles.exerciseName}>{item.name}</Text>
+          <View style={[styles.difficultyBadge, { backgroundColor: getDifficultyColor(item.difficulty) }]}>
+            <Text style={styles.difficultyText}>{item.difficulty}</Text>
+          </View>
         </View>
-      </View>
+        
+        <Text style={styles.exerciseCategory}>{item.category}</Text>
+        
+        {item.muscleGroups.length > 0 && (
+          <View style={styles.muscleGroups}>
+            {item.muscleGroups.map((muscle, index) => (
+              <View key={index} style={styles.muscleTag}>
+                <Text style={styles.muscleText}>{muscle}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+        
+        {item.equipment && (
+          <View style={styles.equipmentRow}>
+            <Ionicons name="fitness" size={16} color="#666" />
+            <Text style={styles.equipmentText}>{item.equipment}</Text>
+          </View>
+        )}
+        
+        {item.description && (
+          <Text style={styles.exerciseDescription} numberOfLines={2}>
+            {item.description}
+          </Text>
+        )}
+      </TouchableOpacity>
       
-      <Text style={styles.exerciseCategory}>{item.category}</Text>
-      
-      {item.muscleGroups.length > 0 && (
-        <View style={styles.muscleGroups}>
-          {item.muscleGroups.map((muscle, index) => (
-            <View key={index} style={styles.muscleTag}>
-              <Text style={styles.muscleText}>{muscle}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-      
-      {item.equipment && (
-        <View style={styles.equipmentRow}>
-          <Ionicons name="fitness" size={16} color="#666" />
-          <Text style={styles.equipmentText}>{item.equipment}</Text>
-        </View>
-      )}
-      
-      {item.description && (
-        <Text style={styles.exerciseDescription} numberOfLines={2}>
-          {item.description}
-        </Text>
-      )}
-    </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.deleteButton}
+        onPress={() => handleDeleteExercise(item)}
+      >
+        <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+      </TouchableOpacity>
+    </View>
   );
 
   const renderCategoryFilter = ({ item }: { item: string }) => (
@@ -243,6 +275,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  exerciseContent: {
+    flex: 1,
+  },
+  deleteButton: {
+    padding: 8,
+    marginLeft: 10,
+    borderRadius: 8,
+    backgroundColor: '#fff5f5',
+    borderWidth: 1,
+    borderColor: '#FFE0E0',
   },
   exerciseHeader: {
     flexDirection: 'row',

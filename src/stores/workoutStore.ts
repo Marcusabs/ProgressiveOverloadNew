@@ -119,8 +119,16 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       await db.runAsync(`
         INSERT INTO workouts (id, session_id, name, date, duration, notes, completed, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `, [workoutId, currentWorkout.session_id, currentWorkout.name, currentWorkout.date, 
-          currentWorkout.duration, currentWorkout.notes, 1, currentWorkout.created_at]);
+      `, [
+        workoutId,
+        currentWorkout.session_id,
+        currentWorkout.name,
+        currentWorkout.date,
+        currentWorkout.duration ?? 0,
+        currentWorkout.notes ?? '',
+        1,
+        currentWorkout.created_at
+      ]);
 
       // Save workout exercises
       for (const exercise of currentWorkout.exercises || []) {
@@ -134,8 +142,16 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
           await db.runAsync(`
             INSERT INTO sets (id, workout_exercise_id, reps, weight, rest_time, completed, notes, order_index)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `, [set.id, exercise.id, set.reps, set.weight, set.rest_time, set.completed ? 1 : 0, 
-              set.notes, set.order_index]);
+          `, [
+            set.id,
+            exercise.id,
+            set.reps ?? 0,
+            set.weight ?? 0,
+            set.rest_time ?? null,
+            set.completed ? 1 : 0,
+            set.notes ?? null,
+            set.order_index ?? 0
+          ]);
         }
       }
 
@@ -163,7 +179,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
         ORDER BY wt.name
       `);
       
-      const templates: WorkoutTemplate[] = result.map(row => ({
+      const templates: WorkoutTemplate[] = result.map((row: any) => ({
         id: row.id,
         session_id: row.session_id,
         name: row.name,
@@ -186,7 +202,7 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       await db.runAsync(`
         INSERT INTO workout_templates (id, session_id, name, description, created_at)
         VALUES (?, ?, ?, ?, ?)
-      `, [id, templateData.session_id, templateData.name, templateData.description, created_at]);
+      `, [id, templateData.session_id, templateData.name, templateData.description ?? '', created_at]);
       
       const newTemplate: WorkoutTemplate = {
         id,
@@ -222,8 +238,11 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
 
       if (previousWorkouts.length === 0) return;
 
-      const suggestions = calculateProgressiveOverload(previousWorkouts);
-      set({ progressiveOverloadSuggestions: suggestions });
+      // Adapt to util signature: calculateProgressiveOverload(currentExercise, previousWorkouts)
+      const currentExercises = currentWorkout.exercises || [];
+      const suggestions = currentExercises.map(ex => calculateProgressiveOverload(ex as any, previousWorkouts as any));
+      const normalized = Array.isArray(suggestions) ? suggestions : [suggestions];
+      set({ progressiveOverloadSuggestions: normalized });
     } catch (error) {
       console.error('Error getting progressive overload suggestions:', error);
     }
@@ -235,8 +254,8 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       
       if (!currentWorkout) return;
 
-      const analysis = analyzeWorkout(currentWorkout);
-      set({ workoutAnalysis: [analysis] });
+      // Adapt to util signature: analyzeWorkout(exercises, previousWorkouts)
+      set({ workoutAnalysis: analyzeWorkout(currentWorkout.exercises || [], []) });
     } catch (error) {
       console.error('Error analyzing workout:', error);
     }
