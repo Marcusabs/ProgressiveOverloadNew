@@ -14,6 +14,7 @@ import {
   Dimensions,
   Modal,
   TextInput,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -179,17 +180,30 @@ export default function HomeScreen() {
         style={styles.header}
       >
         <View style={styles.headerContent}>
-          <View>
-        <Text style={styles.headerTitle}>Progressive Overload</Text>
-            <Text style={styles.headerSubtitle}>
-              {new Date().toLocaleDateString('da-DK', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
-              })}
-            </Text>
+          <View style={styles.headerLeft}>
+            <View style={styles.logoContainer}>
+              <View style={styles.logoIcon}>
+                <View style={styles.logoImageContainer}>
+                  <Image 
+                    source={require('../../assets/logo.png')} 
+                    style={styles.logoImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
             </View>
+            <View style={styles.headerText}>
+              <Text style={styles.headerTitle}>Progressive Overload</Text>
+              <Text style={styles.headerSubtitle}>
+                {new Date().toLocaleDateString('da-DK', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </Text>
+            </View>
+          </View>
           <TouchableOpacity
             style={styles.profileButton}
             onPress={() => navigation.navigate('Profile')}
@@ -225,25 +239,33 @@ export default function HomeScreen() {
 
         {/* Quick Stats */}
         <View style={styles.statsSection}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Statistik</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Din Statistik</Text>
           <View style={styles.statsGrid}>
             <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-              <Ionicons name="fitness" size={24} color={theme.colors.primary} />
+              <View style={[styles.statIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
+                <Ionicons name="fitness" size={24} color={theme.colors.primary} />
+              </View>
               <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.totalWorkouts}</Text>
               <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Træninger</Text>
-        </View>
+            </View>
             <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-              <Ionicons name="calendar" size={24} color={theme.colors.secondary} />
+              <View style={[styles.statIconContainer, { backgroundColor: theme.colors.secondary + '20' }]}>
+                <Ionicons name="calendar" size={24} color={theme.colors.secondary} />
+              </View>
               <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.thisWeekWorkouts}</Text>
               <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Denne uge</Text>
-              </View>
+            </View>
             <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-              <Ionicons name="library" size={24} color={theme.colors.accent} />
+              <View style={[styles.statIconContainer, { backgroundColor: theme.colors.accent + '20' }]}>
+                <Ionicons name="library" size={24} color={theme.colors.accent} />
+              </View>
               <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.totalExercises}</Text>
               <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Øvelser</Text>
             </View>
             <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-              <Ionicons name="trophy" size={24} color={theme.colors.info} />
+              <View style={[styles.statIconContainer, { backgroundColor: theme.colors.info + '20' }]}>
+                <Ionicons name="trophy" size={24} color={theme.colors.info} />
+              </View>
               <Text style={[styles.statValue, { color: theme.colors.text }]}>{stats.favoriteMuscleGroup}</Text>
               <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Favorit</Text>
             </View>
@@ -258,32 +280,44 @@ export default function HomeScreen() {
              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
               onPress={() => navigation.navigate('Training', { initialTab: 'exercises' })}
            >
-              <Ionicons name="library" size={28} color={theme.colors.primary} />
+              <View style={[styles.quickActionIcon, { backgroundColor: theme.colors.primary + '20' }]}>
+                <Ionicons name="library" size={28} color={theme.colors.primary} />
+              </View>
               <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Øvelser</Text>
+              <Text style={[styles.quickActionSubtext, { color: theme.colors.textSecondary }]}>Administrer øvelser</Text>
            </TouchableOpacity>
 
            <TouchableOpacity 
              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
               onPress={() => navigation.navigate('Training', { initialTab: 'builder' })}
            >
-              <Ionicons name="build" size={28} color={theme.colors.secondary} />
-              <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Session Builder</Text>
+              <View style={[styles.quickActionIcon, { backgroundColor: theme.colors.secondary + '20' }]}>
+                <Ionicons name="build" size={28} color={theme.colors.secondary} />
+              </View>
+              <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Session Opretter</Text>
+              <Text style={[styles.quickActionSubtext, { color: theme.colors.textSecondary }]}>Opret sessioner</Text>
            </TouchableOpacity>
 
            <TouchableOpacity 
              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
               onPress={() => navigation.navigate('Progress')}
            >
-              <Ionicons name="stats-chart" size={28} color={theme.colors.accent} />
-             <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Progress</Text>
+              <View style={[styles.quickActionIcon, { backgroundColor: theme.colors.accent + '20' }]}>
+                <Ionicons name="stats-chart" size={28} color={theme.colors.accent} />
+              </View>
+             <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Fremskridt</Text>
+             <Text style={[styles.quickActionSubtext, { color: theme.colors.textSecondary }]}>Se statistikker</Text>
            </TouchableOpacity>
 
            <TouchableOpacity 
              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
               onPress={() => navigation.navigate('Profile')}
            >
-              <Ionicons name="person" size={28} color={theme.colors.info} />
+              <View style={[styles.quickActionIcon, { backgroundColor: theme.colors.info + '20' }]}>
+                <Ionicons name="person" size={28} color={theme.colors.info} />
+              </View>
               <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Profil</Text>
+              <Text style={[styles.quickActionSubtext, { color: theme.colors.textSecondary }]}>Indstillinger</Text>
            </TouchableOpacity>
          </View>
        </View>
@@ -314,9 +348,19 @@ export default function HomeScreen() {
                       <Text style={[styles.sessionName, { color: theme.colors.text }]}>{session.name}</Text>
                       <Text style={[styles.sessionDescription, { color: theme.colors.textSecondary }]}>
                         {session.description || 'Ingen beskrivelse'}
-                    </Text>
+                      </Text>
+                      <View style={styles.sessionMeta}>
+                        <View style={styles.sessionMetaItem}>
+                          <Ionicons name="fitness" size={14} color={theme.colors.textTertiary} />
+                          <Text style={[styles.sessionMetaText, { color: theme.colors.textTertiary }]}>
+                            {getExercisesForSession(session.id).length} øvelser
+                          </Text>
+                        </View>
+                      </View>
                     </View>
-                    <Ionicons name="play-circle" size={24} color={theme.colors.primary} />
+                    <View style={[styles.playButton, { backgroundColor: theme.colors.primary + '20' }]}>
+                      <Ionicons name="play" size={20} color={theme.colors.primary} />
+                    </View>
                   </View>
                   
                   <View style={styles.exercisePreview}>
@@ -627,5 +671,81 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  
+  // New UI Improvement Styles
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  logoContainer: {
+    marginRight: 12,
+  },
+  logoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  logoImageContainer: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoImage: {
+    width: 32,
+    height: 32,
+  },
+  headerText: {
+    flex: 1,
+  },
+  statIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  quickActionIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  quickActionSubtext: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  // Session Card Improvements
+  sessionMeta: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  sessionMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  sessionMetaText: {
+    fontSize: 12,
+    marginLeft: 4,
+  },
+  playButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

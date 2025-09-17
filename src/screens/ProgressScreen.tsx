@@ -7,11 +7,13 @@ import {
   TouchableOpacity,
   Platform,
   StatusBar,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
+import { Calendar } from 'react-native-calendars';
 import { useExerciseStore } from '../stores/exerciseStore';
 import { useProgressStore } from '../stores/progressStore';
 import { useAchievementsStore } from '../stores/achievementsStore';
@@ -22,9 +24,10 @@ export default function ProgressScreen() {
   const { progressData, getRecentWorkouts } = useProgressStore();
   const { achievements, userStats, loadAchievements, loadUserStats, checkAchievements, getAchievementsByCategory, getUnlockedAchievements } = useAchievementsStore();
   const { theme, isDark } = useTheme();
-  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'achievements'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'achievements' | 'calendar'>('overview');
   const [recentWorkouts, setRecentWorkouts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [heatMapData, setHeatMapData] = useState<Record<string, any>>({});
   const screenWidth = Dimensions.get('window').width;
 
   useEffect(() => {
@@ -37,6 +40,9 @@ export default function ProgressScreen() {
       const workouts = await getRecentWorkouts(10);
       setRecentWorkouts(workouts);
       
+      // Calculate heat map data
+      calculateHeatMapData();
+      
       // Load achievements and user stats
       await loadAchievements();
       await loadUserStats();
@@ -45,6 +51,65 @@ export default function ProgressScreen() {
       console.error('Error loading progress data:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const calculateHeatMapData = () => {
+    const heatMap: Record<string, any> = {};
+    
+    // Group workouts by date
+    const workoutsByDate: Record<string, any[]> = {};
+    workouts.forEach(workout => {
+      const date = workout.date;
+      if (!workoutsByDate[date]) {
+        workoutsByDate[date] = [];
+      }
+      workoutsByDate[date].push(workout);
+    });
+    
+    // Calculate intensity for each date
+    Object.keys(workoutsByDate).forEach(date => {
+      const dayWorkouts = workoutsByDate[date];
+      let totalSets = 0;
+      
+      dayWorkouts.forEach(workout => {
+        // Count sets from workout (simplified)
+        totalSets += 1; // Each workout counts as 1 set for now
+      });
+      
+      // Determine intensity level (0-4)
+      let intensity = 0;
+      if (totalSets >= 3) intensity = 4; // High intensity
+      else if (totalSets >= 2) intensity = 3; // Medium-high
+      else if (totalSets >= 1) intensity = 2; // Medium
+      else intensity = 1; // Low
+      
+      heatMap[date] = {
+        marked: true,
+        dotColor: getIntensityColor(intensity),
+        customStyles: {
+          container: {
+            backgroundColor: getIntensityColor(intensity),
+            borderRadius: 4,
+          },
+          text: {
+            color: intensity > 2 ? '#fff' : '#000',
+            fontWeight: 'bold',
+          }
+        }
+      };
+    });
+    
+    setHeatMapData(heatMap);
+  };
+
+  const getIntensityColor = (intensity: number): string => {
+    switch (intensity) {
+      case 4: return '#FF4444'; // Red - High intensity
+      case 3: return '#FF8800'; // Orange - Medium-high
+      case 2: return '#FFDD00'; // Yellow - Medium
+      case 1: return '#88FF88'; // Light green - Low
+      default: return '#E0E0E0'; // Gray - No activity
     }
   };
 
@@ -274,11 +339,11 @@ export default function ProgressScreen() {
           </TouchableOpacity>
           <TouchableOpacity style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
             <Ionicons name="trophy" size={24} color={theme.colors.secondary} />
-            <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Achievements</Text>
+            <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Præstationer</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
             <Ionicons name="share" size={24} color={theme.colors.accent} />
-            <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Del Progress</Text>
+            <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Del Fremskridt</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -464,7 +529,7 @@ export default function ProgressScreen() {
     return (
       <View style={styles.tabContent}>
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Achievements & Milepæle</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Præstationer & Milepæle</Text>
           <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>
             {unlockedAchievements.length} opnået • {totalPoints} point
           </Text>
@@ -528,7 +593,7 @@ export default function ProgressScreen() {
         {/* Recent Achievements */}
         {unlockedAchievements.length > 0 && (
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Seneste Achievements</Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Seneste Præstationer</Text>
             {unlockedAchievements.slice(0, 3).map((achievement) => (
               <View key={achievement.id} style={[styles.achievementCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
                 <View style={styles.achievementHeader}>
@@ -590,6 +655,105 @@ export default function ProgressScreen() {
     );
   };
 
+  const renderCalendarTab = () => {
+    return (
+      <View style={styles.tabContent}>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Træningskalender</Text>
+          <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>
+            Se din træningsintensitet over tid
+          </Text>
+        </View>
+
+        {/* Heat Map Legend */}
+        <View style={[styles.heatMapLegend, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+          <Text style={[styles.legendTitle, { color: theme.colors.text }]}>Intensitet</Text>
+          <View style={styles.legendItems}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendColor, { backgroundColor: '#E0E0E0' }]} />
+              <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>Ingen</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendColor, { backgroundColor: '#88FF88' }]} />
+              <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>Lav</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendColor, { backgroundColor: '#FFDD00' }]} />
+              <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>Medium</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendColor, { backgroundColor: '#FF8800' }]} />
+              <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>Høj</Text>
+            </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendColor, { backgroundColor: '#FF4444' }]} />
+              <Text style={[styles.legendText, { color: theme.colors.textSecondary }]}>Meget høj</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Calendar */}
+        <View style={[styles.calendarContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+          <Calendar
+            onDayPress={(day) => {
+              // Handle day press - could show workout details
+              console.log('Selected day:', day);
+            }}
+            markedDates={heatMapData}
+            theme={{
+              backgroundColor: theme.colors.card,
+              calendarBackground: theme.colors.card,
+              textSectionTitleColor: theme.colors.textSecondary,
+              selectedDayBackgroundColor: theme.colors.primary,
+              selectedDayTextColor: '#ffffff',
+              todayTextColor: theme.colors.primary,
+              dayTextColor: theme.colors.text,
+              textDisabledColor: theme.colors.textTertiary,
+              dotColor: theme.colors.primary,
+              selectedDotColor: '#ffffff',
+              arrowColor: theme.colors.primary,
+              monthTextColor: theme.colors.text,
+              textDayFontFamily: 'System',
+              textMonthFontFamily: 'System',
+              textDayHeaderFontFamily: 'System',
+              textDayFontWeight: '300',
+              textMonthFontWeight: 'bold',
+              textDayHeaderFontWeight: '500',
+              textDayFontSize: 16,
+              textMonthFontSize: 16,
+              textDayHeaderFontSize: 14
+            }}
+          />
+        </View>
+
+        {/* Workout Summary */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Træningsstatistik</Text>
+          <View style={styles.workoutStatsGrid}>
+            <View style={[styles.workoutStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Ionicons name="calendar" size={24} color={theme.colors.primary} />
+              <Text style={[styles.workoutStatValue, { color: theme.colors.text }]}>
+                {Object.keys(heatMapData).length}
+              </Text>
+              <Text style={[styles.workoutStatLabel, { color: theme.colors.textSecondary }]}>
+                Træningsdage
+              </Text>
+            </View>
+            <View style={[styles.workoutStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Ionicons name="fitness" size={24} color={theme.colors.secondary} />
+              <Text style={[styles.workoutStatValue, { color: theme.colors.text }]}>
+                {workouts.length}
+              </Text>
+              <Text style={[styles.workoutStatLabel, { color: theme.colors.textSecondary }]}>
+                Total Workouts
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.colors.primary} />
@@ -599,8 +763,25 @@ export default function ProgressScreen() {
         colors={[theme.colors.primary, theme.colors.primaryDark]}
         style={styles.header}
       >
-        <Text style={styles.headerTitle}>Progress</Text>
-        <Text style={styles.headerSubtitle}>Spor dit fremskridt og analyser</Text>
+        <View style={styles.headerContent}>
+          <View style={styles.headerLeft}>
+            <View style={styles.logoContainer}>
+              <View style={styles.logoIcon}>
+                <View style={styles.logoImageContainer}>
+                  <Image 
+                    source={require('../../assets/logo.png')} 
+                    style={styles.logoImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
+            </View>
+            <View style={styles.headerText}>
+              <Text style={styles.headerTitle}>Fremskridt</Text>
+              <Text style={styles.headerSubtitle}>Spor dit fremskridt og analyser</Text>
+            </View>
+          </View>
+        </View>
       </LinearGradient>
 
       {/* Tab Navigation */}
@@ -643,7 +824,21 @@ export default function ProgressScreen() {
             color={activeTab === 'achievements' ? theme.colors.primary : theme.colors.textSecondary} 
           />
           <Text style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'achievements' && { color: theme.colors.primary, fontWeight: '600' }]}>
-            Achievements
+            Præstationer
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'calendar' && { backgroundColor: theme.colors.primary + '20' }]}
+          onPress={() => setActiveTab('calendar')}
+        >
+          <Ionicons 
+            name={activeTab === 'calendar' ? 'calendar' : 'calendar-outline'} 
+            size={20} 
+            color={activeTab === 'calendar' ? theme.colors.primary : theme.colors.textSecondary} 
+          />
+          <Text style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'calendar' && { color: theme.colors.primary, fontWeight: '600' }]}>
+            Kalender
           </Text>
         </TouchableOpacity>
       </View>
@@ -653,6 +848,7 @@ export default function ProgressScreen() {
         {activeTab === 'overview' && renderOverviewTab()}
         {activeTab === 'analytics' && renderAnalyticsTab()}
         {activeTab === 'achievements' && renderAchievementsTab()}
+        {activeTab === 'calendar' && renderCalendarTab()}
       </ScrollView>
     </View>
   );
@@ -667,7 +863,44 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? 50 : 60,
     paddingBottom: 30,
     paddingHorizontal: 20,
+  },
+  headerContent: {
+    flexDirection: 'row',
     alignItems: 'center',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  logoContainer: {
+    marginRight: 12,
+  },
+  logoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  logoImageContainer: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoImage: {
+    width: 32,
+    height: 32,
+  },
+  headerText: {
+    flex: 1,
   },
   headerTitle: {
     fontSize: 28,
@@ -1083,5 +1316,73 @@ const styles = StyleSheet.create({
   milestonePoints: {
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  // Heat Map Calendar Styles
+  heatMapLegend: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  legendTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  legendItems: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendText: {
+    fontSize: 12,
+  },
+  calendarContainer: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  workoutStatsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  workoutStatCard: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  workoutStatValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  workoutStatLabel: {
+    fontSize: 12,
+    textAlign: 'center',
   },
 });

@@ -58,7 +58,7 @@ export default function TabNavigator() {
       <Tab.Screen 
         name="Home" 
         component={HomeScreen}
-        options={{ title: 'Home' }}
+        options={{ title: 'Hjem' }}
       />
       <Tab.Screen 
         name="Training" 
@@ -68,7 +68,7 @@ export default function TabNavigator() {
       <Tab.Screen 
         name="Progress" 
         component={ProgressScreen}
-        options={{ title: 'Progress' }}
+        options={{ title: 'Fremskridt' }}
       />
       <Tab.Screen 
         name="WorkoutHistory" 
@@ -78,7 +78,7 @@ export default function TabNavigator() {
       <Tab.Screen 
         name="Profile" 
         component={ProfileScreen}
-        options={{ title: 'Profile' }}
+        options={{ title: 'Profil' }}
       />
     </Tab.Navigator>
   );

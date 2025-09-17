@@ -11,6 +11,7 @@ import {
   TextInput,
   Alert,
   FlatList,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,7 +25,7 @@ import { RootTabParamList } from '../types';
 type TrainingScreenRouteProp = RouteProp<RootTabParamList, 'Training'>;
 
 export default function TrainingScreen({ route }: { route: TrainingScreenRouteProp }) {
-  const { trainingSessions, exercises, muscleGroups, loadTrainingSessions, loadExercises, loadMuscleGroups, updateExercise, addExercise, deleteExercise, addTrainingSession, updateTrainingSession, deleteTrainingSession, startWorkout, endWorkout, addSetToExercise, getProgressiveOverloadSuggestions, currentWorkout, setCurrentWorkout } = useExerciseStore();
+  const { trainingSessions, exercises, muscleGroups, loadTrainingSessions, loadExercises, loadMuscleGroups, updateExercise, addExercise, deleteExercise, addTrainingSession, updateTrainingSession, deleteTrainingSession, startWorkout, endWorkout, addSetToExercise, updateSetInExercise, deleteSetFromExercise, getProgressiveOverloadSuggestions, currentWorkout, setCurrentWorkout } = useExerciseStore();
   const { theme, isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'sessions' | 'exercises' | 'builder'>(
     route?.params?.initialTab || 'sessions'
@@ -55,6 +56,23 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
   const [showProgressiveOverload, setShowProgressiveOverload] = useState(false);
   const [progressiveOverloadSuggestions, setProgressiveOverloadSuggestions] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
+  
+  // Rest Timer states
+  const [restTimer, setRestTimer] = useState<{
+    isActive: boolean;
+    timeLeft: number;
+    totalTime: number;
+  }>({
+    isActive: false,
+    timeLeft: 0,
+    totalTime: 0
+  });
+  const [restTimerInterval, setRestTimerInterval] = useState<NodeJS.Timeout | null>(null);
+  const [restTimerDuration, setRestTimerDuration] = useState(90); // Default 90 seconds, user can change
+  const [showCustomTimerModal, setShowCustomTimerModal] = useState(false);
+  const [customTimerInput, setCustomTimerInput] = useState('');
+  const [editingSetIndex, setEditingSetIndex] = useState<number | null>(null);
+  const [editSetData, setEditSetData] = useState({ reps: '', weight: '' });
   
   // Session management states
   const [showSessionDetails, setShowSessionDetails] = useState(false);
@@ -121,6 +139,15 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
       }
     };
   }, [showLiveTraining, trainingStartTime]);
+
+  // Cleanup rest timer on unmount
+  useEffect(() => {
+    return () => {
+      if (restTimerInterval) {
+        clearInterval(restTimerInterval);
+      }
+    };
+  }, [restTimerInterval]);
 
   const getMuscleGroupColor = (muscleGroupId: string): string => {
     const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8'];
@@ -381,12 +408,171 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
       setCompletedSets([...completedSets, { reps, weight }]);
       setCurrentSet({ reps: '', weight: '' });
       
+      // Start rest timer after adding a set
+      startRestTimer(restTimerDuration); // Use user-selected duration
+      
       // Load progressive overload suggestions after adding a set
       await loadProgressiveOverloadSuggestions();
     } catch (error) {
       console.error('Error adding set:', error);
       Alert.alert('Fejl', `Kunne ikke tilføje sæt: ${error instanceof Error ? error.message : 'Ukendt fejl'}`);
     }
+  };
+
+  const handleDeleteSet = async (setIndex: number) => {
+    Alert.alert(
+      'Slet Sæt',
+      'Er du sikker på at du vil slette dette sæt?',
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Slet',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (!currentWorkout) return;
+              
+              const sessionExercises = getExercisesForSession(currentWorkout.session_id);
+              const currentExercise = sessionExercises[currentExerciseIndex];
+              
+              if (!currentExercise) {
+                throw new Error(`Ingen øvelse fundet på index ${currentExerciseIndex}`);
+              }
+
+              // Remove from database
+              await deleteSetFromExercise(currentWorkout.id, currentExercise.id, setIndex);
+              
+              // Remove from local state
+              const newCompletedSets = completedSets.filter((_, index) => index !== setIndex);
+              setCompletedSets(newCompletedSets);
+              
+              // Reload progressive overload suggestions
+              await loadProgressiveOverloadSuggestions();
+            } catch (error) {
+              console.error('Error deleting set:', error);
+              Alert.alert('Fejl', `Kunne ikke slette sæt: ${error instanceof Error ? error.message : 'Ukendt fejl'}`);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleEditSet = (setIndex: number) => {
+    const set = completedSets[setIndex];
+    setEditingSetIndex(setIndex);
+    setEditSetData({ reps: set.reps.toString(), weight: set.weight.toString() });
+  };
+
+  const handleSaveEditSet = async () => {
+    if (!currentWorkout || editingSetIndex === null) return;
+
+    const reps = parseInt(editSetData.reps);
+    const weight = parseFloat(editSetData.weight);
+
+    if (isNaN(reps) || isNaN(weight)) {
+      Alert.alert('Fejl', 'Ugyldige tal');
+      return;
+    }
+
+    try {
+      const sessionExercises = getExercisesForSession(currentWorkout.session_id);
+      const currentExercise = sessionExercises[currentExerciseIndex];
+      
+      if (!currentExercise) {
+        throw new Error(`Ingen øvelse fundet på index ${currentExerciseIndex}`);
+      }
+
+      // Update in database
+      await updateSetInExercise(currentWorkout.id, currentExercise.id, editingSetIndex, reps, weight);
+      
+      // Update local state
+      const newCompletedSets = [...completedSets];
+      newCompletedSets[editingSetIndex] = { reps, weight };
+      setCompletedSets(newCompletedSets);
+      
+      // Reset edit state
+      setEditingSetIndex(null);
+      setEditSetData({ reps: '', weight: '' });
+      
+      // Reload progressive overload suggestions
+      await loadProgressiveOverloadSuggestions();
+    } catch (error) {
+      console.error('Error updating set:', error);
+      Alert.alert('Fejl', `Kunne ikke opdatere sæt: ${error instanceof Error ? error.message : 'Ukendt fejl'}`);
+    }
+  };
+
+  const handleCancelEditSet = () => {
+    setEditingSetIndex(null);
+    setEditSetData({ reps: '', weight: '' });
+  };
+
+  // Rest Timer functions
+  const startRestTimer = (seconds: number) => {
+    // Clear existing timer
+    if (restTimerInterval) {
+      clearInterval(restTimerInterval);
+    }
+    
+    setRestTimer({
+      isActive: true,
+      timeLeft: seconds,
+      totalTime: seconds
+    });
+    
+    const interval = setInterval(() => {
+      setRestTimer(prev => {
+        if (prev.timeLeft <= 1) {
+          clearInterval(interval);
+          return {
+            isActive: false,
+            timeLeft: 0,
+            totalTime: prev.totalTime
+          };
+        }
+        return {
+          ...prev,
+          timeLeft: prev.timeLeft - 1
+        };
+      });
+    }, 1000);
+    
+    setRestTimerInterval(interval);
+  };
+
+  const stopRestTimer = () => {
+    if (restTimerInterval) {
+      clearInterval(restTimerInterval);
+      setRestTimerInterval(null);
+    }
+    setRestTimer({
+      isActive: false,
+      timeLeft: 0,
+      totalTime: 0
+    });
+  };
+
+  const changeRestTimerDuration = () => {
+    setCustomTimerInput(restTimerDuration.toString());
+    setShowCustomTimerModal(true);
+  };
+
+  const handleCustomTimerSubmit = () => {
+    const newDuration = parseInt(customTimerInput);
+    if (newDuration >= 30 && newDuration <= 300) {
+      setRestTimerDuration(newDuration);
+      setShowCustomTimerModal(false);
+      setCustomTimerInput('');
+    } else {
+      Alert.alert('Fejl', 'Tid skal være mellem 30 og 300 sekunder');
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Load progressive overload suggestions for current exercise
@@ -869,8 +1055,25 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
         colors={[theme.colors.primary, theme.colors.primaryDark]}
         style={styles.header}
       >
-        <Text style={styles.headerTitle}>Træning</Text>
-        <Text style={styles.headerSubtitle}>Øvelser, sessioner og workouts</Text>
+        <View style={styles.headerContent}>
+          <View style={styles.headerLeft}>
+            <View style={styles.logoContainer}>
+              <View style={styles.logoIcon}>
+                <View style={styles.logoImageContainer}>
+                  <Image 
+                    source={require('../../assets/logo.png')} 
+                    style={styles.logoImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
+            </View>
+            <View style={styles.headerText}>
+              <Text style={styles.headerTitle}>Træning</Text>
+              <Text style={styles.headerSubtitle}>Øvelser, sessioner og træninger</Text>
+            </View>
+          </View>
+        </View>
       </LinearGradient>
 
       {/* Tab Navigation */}
@@ -913,7 +1116,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
             color={activeTab === 'builder' ? theme.colors.primary : theme.colors.textSecondary} 
           />
           <Text style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'builder' && { color: theme.colors.primary, fontWeight: '600' }]}>
-            Builder
+            Opretter
           </Text>
         </TouchableOpacity>
       </View>
@@ -1219,6 +1422,8 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
               </TouchableOpacity>
             </View>
 
+            <ScrollView style={styles.liveTrainingScrollView} showsVerticalScrollIndicator={false}>
+
             {/* Training Stats */}
             <View style={styles.trainingStats}>
               <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
@@ -1240,8 +1445,49 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
               </View>
             </View>
 
+            {/* Rest Timer */}
+            {restTimer.isActive && (
+              <View style={[styles.restTimerContainer, { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary }]}>
+                <View style={styles.restTimerHeader}>
+                  <Ionicons name="timer" size={24} color={theme.colors.primary} />
+                  <Text style={[styles.restTimerTitle, { color: theme.colors.primary }]}>Hvile</Text>
+                  <View style={styles.restTimerButtons}>
+                    <TouchableOpacity
+                      style={[styles.timerSettingsButton, { backgroundColor: theme.colors.secondary }]}
+                      onPress={changeRestTimerDuration}
+                    >
+                      <Ionicons name="settings" size={16} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.stopTimerButton, { backgroundColor: theme.colors.accent }]}
+                      onPress={stopRestTimer}
+                    >
+                      <Ionicons name="stop" size={16} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <Text style={[styles.restTimerTime, { color: theme.colors.primary }]}>
+                  {formatTime(restTimer.timeLeft)}
+                </Text>
+                <View style={[styles.restTimerProgress, { backgroundColor: theme.colors.divider }]}>
+                  <View 
+                    style={[
+                      styles.restTimerProgressBar, 
+                      { 
+                        backgroundColor: theme.colors.primary,
+                        width: `${((restTimer.totalTime - restTimer.timeLeft) / restTimer.totalTime) * 100}%`
+                      }
+                    ]} 
+                  />
+                </View>
+                <Text style={[styles.restTimerHint, { color: theme.colors.textSecondary }]}>
+                  {restTimer.timeLeft > 0 ? 'Forbered dig til næste sæt' : 'Klar til næste sæt!'}
+                </Text>
+              </View>
+            )}
+
             {/* Current Exercise */}
-            {currentWorkout && (
+            {currentWorkout && showLiveTraining && (
               <>
                 <View style={styles.currentExerciseSection}>
                   <Text style={[styles.currentExerciseTitle, { color: theme.colors.text }]}>
@@ -1262,10 +1508,26 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                     <View style={styles.completedSetsList}>
                       {completedSets.map((set, index) => (
                         <View key={index} style={[styles.completedSetItem, { backgroundColor: theme.colors.card }]}>
-                          <Text style={[styles.setNumber, { color: theme.colors.primary }]}>Sæt {index + 1}</Text>
-                          <Text style={[styles.setDetails, { color: theme.colors.text }]}>
-                            {set.reps} reps × {set.weight} kg
-                          </Text>
+                          <View style={styles.setInfo}>
+                            <Text style={[styles.setNumber, { color: theme.colors.primary }]}>Sæt {index + 1}</Text>
+                            <Text style={[styles.setDetails, { color: theme.colors.text }]}>
+                              {set.reps} reps × {set.weight} kg
+                            </Text>
+                          </View>
+                          <View style={styles.setActions}>
+                            <TouchableOpacity
+                              style={[styles.editSetButton, { backgroundColor: theme.colors.primary }]}
+                              onPress={() => handleEditSet(index)}
+                            >
+                              <Ionicons name="pencil" size={16} color="#fff" />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.deleteSetButton, { backgroundColor: theme.colors.accent }]}
+                              onPress={() => handleDeleteSet(index)}
+                            >
+                              <Ionicons name="trash" size={16} color="#fff" />
+                            </TouchableOpacity>
+                          </View>
                         </View>
                       ))}
                     </View>
@@ -1338,6 +1600,25 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                   </View>
                 )}
 
+                {/* Rest Timer Settings - Only show when timer is not active */}
+                {!restTimer.isActive && (
+                  <View style={styles.restTimerSettingsSection}>
+                    <View style={styles.restTimerSettingsHeader}>
+                      <Ionicons name="timer-outline" size={20} color={theme.colors.text} />
+                      <Text style={[styles.restTimerSettingsTitle, { color: theme.colors.text }]}>
+                        Hviletid: {restTimerDuration} sekunder
+                      </Text>
+                      <TouchableOpacity
+                        style={[styles.changeTimerButton, { backgroundColor: theme.colors.primary }]}
+                        onPress={changeRestTimerDuration}
+                      >
+                        <Ionicons name="create-outline" size={16} color="#fff" />
+                        <Text style={styles.changeTimerText}>Ændre</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
                 {/* Add Set Form */}
                 <View style={styles.addSetSection}>
                   <Text style={[styles.addSetTitle, { color: theme.colors.text }]}>Tilføj sæt:</Text>
@@ -1372,29 +1653,162 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                     </TouchableOpacity>
                   </View>
                 </View>
-
-                {/* Navigation */}
-                <View style={styles.exerciseNavigation}>
-                  <TouchableOpacity
-                    style={[styles.navButton, { backgroundColor: theme.colors.divider }]}
-                    onPress={handlePreviousExercise}
-                    disabled={currentExerciseIndex === 0}
-                  >
-                    <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
-                    <Text style={[styles.navButtonText, { color: theme.colors.text }]}>Forrige</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={[styles.navButton, { backgroundColor: theme.colors.divider }]}
-                    onPress={handleNextExercise}
-                    disabled={currentExerciseIndex >= getExercisesForSession(currentWorkout.session_id).length - 1}
-                  >
-                    <Text style={[styles.navButtonText, { color: theme.colors.text }]}>Næste</Text>
-                    <Ionicons name="chevron-forward" size={20} color={theme.colors.text} />
-                  </TouchableOpacity>
-                </View>
               </>
             )}
+
+            </ScrollView>
+
+            {/* Navigation - Fixed at bottom */}
+            {currentWorkout && showLiveTraining && (
+              <View style={styles.exerciseNavigation}>
+                <TouchableOpacity
+                  style={[styles.navButton, { backgroundColor: theme.colors.divider }]}
+                  onPress={handlePreviousExercise}
+                  disabled={currentExerciseIndex === 0}
+                >
+                  <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
+                  <Text style={[styles.navButtonText, { color: theme.colors.text }]}>Forrige</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.navButton, { backgroundColor: theme.colors.divider }]}
+                  onPress={handleNextExercise}
+                  disabled={currentExerciseIndex >= getExercisesForSession(currentWorkout.session_id).length - 1}
+                >
+                  <Text style={[styles.navButtonText, { color: theme.colors.text }]}>Næste</Text>
+                  <Ionicons name="chevron-forward" size={20} color={theme.colors.text} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Custom Timer Modal */}
+      <Modal
+        visible={showCustomTimerModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCustomTimerModal(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
+          <View style={[styles.customTimerModal, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Custom Hviletid</Text>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => setShowCustomTimerModal(false)}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.primary} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.customTimerContent}>
+              <Text style={[styles.customTimerLabel, { color: theme.colors.text }]}>
+                Indtast hviletid i sekunder:
+              </Text>
+              <Text style={[styles.customTimerSubLabel, { color: theme.colors.textSecondary }]}>
+                (30-300 sekunder)
+              </Text>
+              <TextInput
+                style={[styles.customTimerInput, { 
+                  backgroundColor: theme.colors.card, 
+                  color: theme.colors.text, 
+                  borderColor: theme.colors.border 
+                }]}
+                value={customTimerInput}
+                onChangeText={setCustomTimerInput}
+                placeholder={`Nuværende: ${restTimerDuration}s`}
+                keyboardType="numeric"
+                placeholderTextColor={theme.colors.textTertiary}
+                selectTextOnFocus={true}
+              />
+              
+              <View style={styles.customTimerButtons}>
+                <TouchableOpacity
+                  style={[styles.customTimerButton, { backgroundColor: theme.colors.divider }]}
+                  onPress={() => setShowCustomTimerModal(false)}
+                >
+                  <Text style={[styles.customTimerButtonText, { color: theme.colors.text }]}>Annuller</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.customTimerButton, { backgroundColor: theme.colors.primary }]}
+                  onPress={handleCustomTimerSubmit}
+                >
+                  <Text style={[styles.customTimerButtonText, { color: '#fff' }]}>Gem</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Set Modal */}
+      <Modal
+        visible={editingSetIndex !== null}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={handleCancelEditSet}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
+          <View style={[styles.editSetModal, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Rediger Sæt</Text>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={handleCancelEditSet}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.primary} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.editSetContent}>
+              <Text style={[styles.editSetLabel, { color: theme.colors.text }]}>
+                Sæt {editingSetIndex !== null ? editingSetIndex + 1 : ''}
+              </Text>
+              
+              <View style={styles.editSetInputs}>
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Reps</Text>
+                  <TextInput
+                    style={[styles.setInput, { backgroundColor: theme.colors.card, color: theme.colors.text, borderColor: theme.colors.border }]}
+                    value={editSetData.reps}
+                    onChangeText={(text) => setEditSetData({ ...editSetData, reps: text })}
+                    placeholder="10"
+                    keyboardType="numeric"
+                    placeholderTextColor={theme.colors.textTertiary}
+                  />
+                </View>
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Vægt (kg)</Text>
+                  <TextInput
+                    style={[styles.setInput, { backgroundColor: theme.colors.card, color: theme.colors.text, borderColor: theme.colors.border }]}
+                    value={editSetData.weight}
+                    onChangeText={(text) => setEditSetData({ ...editSetData, weight: text })}
+                    placeholder="50"
+                    keyboardType="numeric"
+                    placeholderTextColor={theme.colors.textTertiary}
+                  />
+                </View>
+              </View>
+              
+              <View style={styles.editSetButtons}>
+                <TouchableOpacity
+                  style={[styles.editSetButton, { backgroundColor: theme.colors.divider }]}
+                  onPress={handleCancelEditSet}
+                >
+                  <Text style={[styles.editSetButtonText, { color: theme.colors.text }]}>Annuller</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.editSetButton, { backgroundColor: theme.colors.primary }]}
+                  onPress={handleSaveEditSet}
+                >
+                  <Text style={[styles.editSetButtonText, { color: '#fff' }]}>Gem</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1618,7 +2032,44 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? 50 : 60,
     paddingBottom: 30,
     paddingHorizontal: 20,
+  },
+  headerContent: {
+    flexDirection: 'row',
     alignItems: 'center',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  logoContainer: {
+    marginRight: 12,
+  },
+  logoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  logoImageContainer: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoImage: {
+    width: 32,
+    height: 32,
+  },
+  headerText: {
+    flex: 1,
   },
   headerTitle: {
     fontSize: 28,
@@ -2060,6 +2511,8 @@ const styles = StyleSheet.create({
     width: '95%',
     maxWidth: 500,
     maxHeight: '90%',
+    flex: 1,
+    flexDirection: 'column',
   },
   trainingHeader: {
     flexDirection: 'row',
@@ -2116,15 +2569,60 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   completedSetsList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    flexDirection: 'column',
   },
   completedSetItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    marginBottom: 8,
+    borderRadius: 8,
+  },
+  setInfo: {
+    flex: 1,
+  },
+  setActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  editSetButton: {
     padding: 8,
     borderRadius: 6,
-    minWidth: 80,
-    alignItems: 'center',
+  },
+  deleteSetButton: {
+    padding: 8,
+    borderRadius: 6,
+  },
+  // Edit Set Modal
+  editSetModal: {
+    borderRadius: 12,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  editSetContent: {
+    paddingVertical: 20,
+  },
+  editSetLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  editSetInputs: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  editSetButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  editSetButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   setNumber: {
     fontSize: 12,
@@ -2172,6 +2670,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
   },
   navButton: {
     flex: 1,
@@ -2368,6 +2870,143 @@ const styles = StyleSheet.create({
   applySuggestionText: {
     color: '#fff',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  // Rest Timer Styles
+  restTimerContainer: {
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
+  },
+  restTimerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 12,
+  },
+  restTimerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    flex: 1,
+    textAlign: 'center',
+  },
+  stopTimerButton: {
+    padding: 8,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  restTimerTime: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  restTimerProgress: {
+    width: '100%',
+    height: 8,
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  restTimerProgressBar: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  restTimerHint: {
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  // Live Training ScrollView
+  liveTrainingScrollView: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
+  // Rest Timer Settings
+  restTimerSettingsSection: {
+    marginBottom: 20,
+    padding: 16,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 12,
+  },
+  restTimerSettingsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  restTimerSettingsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+    marginLeft: 8,
+  },
+  changeTimerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  changeTimerText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  // Rest Timer Buttons
+  restTimerButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  timerSettingsButton: {
+    padding: 8,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Custom Timer Modal
+  customTimerModal: {
+    borderRadius: 12,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  customTimerContent: {
+    paddingVertical: 20,
+  },
+  customTimerLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  customTimerSubLabel: {
+    fontSize: 14,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  customTimerInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 18,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  customTimerButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  customTimerButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  customTimerButtonText: {
+    fontSize: 16,
     fontWeight: '600',
   },
 });

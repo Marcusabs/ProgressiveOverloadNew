@@ -22,8 +22,10 @@ interface ExerciseState {
   updateTrainingSession: (id: string, updates: Partial<TrainingSession>) => Promise<void>;
   deleteTrainingSession: (id: string) => Promise<void>;
   startWorkout: (sessionId: string) => Promise<Workout>;
-  endWorkout: (workoutId: string, duration: number, notes?: string) => Promise<void>;
+  endWorkout: (workoutId: string, duration: number, notes?: string, date?: string) => Promise<void>;
   addSetToExercise: (workoutId: string, exerciseId: string, reps: number, weight: number) => Promise<void>;
+  updateSetInExercise: (workoutId: string, exerciseId: string, setIndex: number, reps: number, weight: number) => Promise<void>;
+  deleteSetFromExercise: (workoutId: string, exerciseId: string, setIndex: number) => Promise<void>;
   addWorkout: (workout: Omit<Workout, 'id' | 'created_at'>) => Promise<Workout>;
   getProgressiveOverloadSuggestions: (sessionId: string) => Promise<ProgressiveOverloadSuggestion[]>;
   setSelectedSession: (session: TrainingSession | null) => void;
@@ -460,15 +462,15 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
     }
   },
 
-  endWorkout: async (workoutId, duration, notes) => {
+  endWorkout: async (workoutId, duration, notes, date) => {
     try {
       const db = getDatabase();
       
       await db.runAsync(`
         UPDATE workouts 
-        SET duration = ?, notes = ?, completed = 1 
+        SET duration = ?, notes = ?, completed = 1, date = ?
         WHERE id = ?
-      `, [duration, notes || null, workoutId]);
+      `, [duration, notes || null, date || new Date().toISOString().split('T')[0], workoutId]);
 
       set({ currentWorkout: null });
       get().loadWorkouts();
@@ -482,14 +484,23 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       const db = getDatabase();
       
       // Get workout_exercise_id
-      const workoutExercise = await db.getFirstAsync(`
+      let workoutExercise = await db.getFirstAsync(`
         SELECT id FROM workout_exercises 
         WHERE workout_id = ? AND exercise_id = ?
       `, [workoutId, exerciseId]);
       
       if (!workoutExercise) {
-        console.error('Workout exercise not found for workoutId:', workoutId, 'exerciseId:', exerciseId);
-        throw new Error('Workout exercise not found');
+        // Create workout_exercises row on the fly if missing
+        const weCount = await db.getFirstAsync(`
+          SELECT COUNT(*) as count FROM workout_exercises WHERE workout_id = ?
+        `, [workoutId]);
+        const orderIndex = ((weCount as any)?.count || 0) + 1;
+        const workoutExerciseId = `${workoutId}_${exerciseId}`;
+        await db.runAsync(`
+          INSERT INTO workout_exercises (id, workout_id, exercise_id, order_index, completed)
+          VALUES (?, ?, ?, ?, ?)
+        `, [workoutExerciseId, workoutId, exerciseId, orderIndex, 1]);
+        workoutExercise = { id: workoutExerciseId } as any;
       }
 
       // Get next set number
@@ -503,12 +514,99 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       await db.runAsync(`
         INSERT INTO sets (id, workout_exercise_id, reps, weight, completed, order_index)
         VALUES (?, ?, ?, ?, ?, ?)
-      `, [setId, (workoutExercise as any).id, reps, weight, 1, ((setCount as any)?.count || 0) + 1]);
+      `, [setId, (workoutExercise as any).id, reps ?? 0, weight ?? 0, 1, ((setCount as any)?.count || 0) + 1]);
 
       console.log('Set added successfully:', { setId, reps, weight });
 
     } catch (error) {
       console.error('Failed to add set:', error);
+      throw error; // Re-throw the error so it can be caught in the UI
+    }
+  },
+
+  updateSetInExercise: async (workoutId, exerciseId, setIndex, reps, weight) => {
+    try {
+      const db = getDatabase();
+      
+      // Get workout_exercise_id
+      const workoutExercise = await db.getFirstAsync(`
+        SELECT id FROM workout_exercises 
+        WHERE workout_id = ? AND exercise_id = ?
+      `, [workoutId, exerciseId]);
+      
+      if (!workoutExercise) {
+        throw new Error('Workout exercise not found');
+      }
+
+      // Get all sets for this exercise in order
+      const sets = await db.getAllAsync(`
+        SELECT id, order_index FROM sets 
+        WHERE workout_exercise_id = ? 
+        ORDER BY order_index
+      `, [(workoutExercise as any).id]);
+
+      if (setIndex >= sets.length || setIndex < 0) {
+        throw new Error('Set index out of range');
+      }
+
+      const setToUpdate = sets[setIndex];
+      
+      // Update the specific set
+      await db.runAsync(`
+        UPDATE sets SET reps = ?, weight = ? WHERE id = ?
+      `, [reps, weight, setToUpdate.id]);
+
+      console.log('Set updated successfully:', { setId: setToUpdate.id, setIndex, reps, weight });
+
+    } catch (error) {
+      console.error('Failed to update set:', error);
+      throw error; // Re-throw the error so it can be caught in the UI
+    }
+  },
+
+  deleteSetFromExercise: async (workoutId, exerciseId, setIndex) => {
+    try {
+      const db = getDatabase();
+      
+      // Get workout_exercise_id
+      const workoutExercise = await db.getFirstAsync(`
+        SELECT id FROM workout_exercises 
+        WHERE workout_id = ? AND exercise_id = ?
+      `, [workoutId, exerciseId]);
+      
+      if (!workoutExercise) {
+        throw new Error('Workout exercise not found');
+      }
+
+      // Get all sets for this exercise in order
+      const sets = await db.getAllAsync(`
+        SELECT id, order_index FROM sets 
+        WHERE workout_exercise_id = ? 
+        ORDER BY order_index
+      `, [(workoutExercise as any).id]);
+
+      if (setIndex >= sets.length || setIndex < 0) {
+        throw new Error('Set index out of range');
+      }
+
+      const setToDelete = sets[setIndex];
+      
+      // Delete the specific set
+      await db.runAsync(`
+        DELETE FROM sets WHERE id = ?
+      `, [setToDelete.id]);
+
+      // Update order_index for remaining sets
+      for (let i = setIndex + 1; i < sets.length; i++) {
+        await db.runAsync(`
+          UPDATE sets SET order_index = ? WHERE id = ?
+        `, [i, sets[i].id]);
+      }
+
+      console.log('Set deleted successfully:', { setId: setToDelete.id, setIndex });
+
+    } catch (error) {
+      console.error('Failed to delete set:', error);
       throw error; // Re-throw the error so it can be caught in the UI
     }
   },

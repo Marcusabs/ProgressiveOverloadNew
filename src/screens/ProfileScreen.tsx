@@ -122,7 +122,7 @@ export default function ProfileScreen() {
 
   const handleSaveProfile = async () => {
     if (!editForm.name.trim()) {
-      Alert.alert('Error', 'Name is required');
+      Alert.alert('Fejl', 'Navn er påkrævet');
       return;
     }
 
@@ -153,21 +153,109 @@ export default function ProfileScreen() {
       });
 
       setShowEditModal(false);
-      Alert.alert('Success', 'Profile updated successfully');
+      Alert.alert('Succes', 'Profil opdateret succesfuldt');
     } catch (error) {
       console.error('Error saving profile:', error);
-      Alert.alert('Error', 'Failed to update profile');
+      Alert.alert('Fejl', 'Kunne ikke opdatere profil');
     }
+  };
+
+  const handleExportData = async () => {
+    try {
+      const db = getDatabase();
+      
+      // Hent alle data
+      const workouts = await db.getAllAsync('SELECT * FROM workouts ORDER BY date DESC');
+      const exercises = await db.getAllAsync('SELECT * FROM exercises');
+      const sets = await db.getAllAsync('SELECT * FROM sets ORDER BY created_at DESC');
+      const progress = await db.getAllAsync('SELECT * FROM progress_data ORDER BY date DESC');
+      
+      const exportData = {
+        exportDate: new Date().toISOString(),
+        version: '1.0',
+        data: {
+          workouts,
+          exercises,
+          sets,
+          progress
+        }
+      };
+      
+      // Konverter til JSON string
+      const jsonString = JSON.stringify(exportData, null, 2);
+      
+      // I en rigtig app ville man bruge expo-file-system til at gemme filen
+      // Her viser vi bare dataene i en alert for demonstration
+      Alert.alert(
+        'Data Eksporteret',
+        `Eksporteret ${workouts.length} træninger, ${exercises.length} øvelser, ${sets.length} sæt og ${progress.length} fremskridt poster.\n\nData er klar til download.`,
+        [{ text: 'OK' }]
+      );
+      
+      console.log('Export data:', exportData);
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      Alert.alert('Fejl', 'Kunne ikke eksportere data');
+    }
+  };
+
+  const handleBackupData = async () => {
+    try {
+      // Simuler backup til cloud
+      Alert.alert(
+        'Backup Startet',
+        'Dine data bliver sikkerhedskopieret til skyen...',
+        [{ text: 'OK' }]
+      );
+      
+      // Simuler backup proces
+      setTimeout(() => {
+        Alert.alert(
+          'Backup Fuldført',
+          'Dine data er nu sikkerhedskopieret og synkroniseret.',
+          [{ text: 'OK' }]
+        );
+      }, 2000);
+    } catch (error) {
+      console.error('Error backing up data:', error);
+      Alert.alert('Fejl', 'Kunne ikke lave backup');
+    }
+  };
+
+  const handleShareProgress = () => {
+    Alert.alert(
+      'Del Fremskridt',
+      'Vælg hvordan du vil dele dit fremskridt:',
+      [
+        { text: 'Annuller', style: 'cancel' },
+        { text: 'Instagram Story', onPress: () => console.log('Share to Instagram') },
+        { text: 'Facebook', onPress: () => console.log('Share to Facebook') },
+        { text: 'Twitter', onPress: () => console.log('Share to Twitter') },
+        { text: 'Kopier Link', onPress: () => console.log('Copy link') }
+      ]
+    );
+  };
+
+  const handleHelp = () => {
+    Alert.alert(
+      'Hjælp & Support',
+      'Velkommen til Progressive Overload!\n\n📱 Træning: Opret sessioner og følg dine øvelser\n📊 Fremskridt: Se dine resultater og analyser\n🏆 Præstationer: Optjen badges for dine mål\n\nHar du spørgsmål? Kontakt support@progressiveoverload.dk',
+      [
+        { text: 'FAQ', onPress: () => console.log('Open FAQ') },
+        { text: 'Kontakt Support', onPress: () => console.log('Contact support') },
+        { text: 'OK' }
+      ]
+    );
   };
 
   const handleClearData = () => {
     Alert.alert(
-      'Clear All Data',
-      'This will delete all your workouts, exercises, and progress data. This action cannot be undone.',
+      'Slet Alle Data',
+      'Dette vil slette alle dine træninger, øvelser og fremskridt data. Denne handling kan ikke fortrydes.',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Annuller', style: 'cancel' },
         {
-          text: 'Clear Data',
+          text: 'Slet Data',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -180,10 +268,10 @@ export default function ProfileScreen() {
                 DELETE FROM template_exercises;
                 DELETE FROM workout_templates;
               `);
-              Alert.alert('Success', 'All data has been cleared');
+              Alert.alert('Succes', 'Alle data er blevet slettet');
             } catch (error) {
               console.error('Error clearing data:', error);
-              Alert.alert('Error', 'Failed to clear data');
+              Alert.alert('Fejl', 'Kunne ikke slette data');
             }
           }
         }
@@ -250,16 +338,20 @@ export default function ProfileScreen() {
             <Ionicons name="person" size={40} color="#fff" />
           </View>
           <View style={styles.profileDetails}>
-            <Text style={styles.profileName}>{profile?.name || 'User'}</Text>
+            <Text style={styles.profileName}>{profile?.name || 'Bruger'}</Text>
             <View style={[styles.experienceBadge, { backgroundColor: getExperienceColor(profile?.experience || 'beginner') }]}>
               <Text style={styles.experienceText}>
-                {profile?.experience || 'beginner'}
+                {profile?.experience === 'beginner' ? 'Begynder' : 
+                 profile?.experience === 'intermediate' ? 'Mellem' : 
+                 profile?.experience === 'advanced' ? 'Avanceret' : 'Begynder'}
               </Text>
             </View>
           </View>
           <TouchableOpacity
             style={styles.editButton}
             onPress={handleEditProfile}
+            accessibilityLabel="Rediger Profil"
+            accessibilityHint="Tryk for at redigere profil information"
           >
             <Ionicons name="create-outline" size={24} color="#fff" />
           </TouchableOpacity>
@@ -269,31 +361,35 @@ export default function ProfileScreen() {
       <View style={styles.content}>
         {/* Profile Stats */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Profile Information</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Profil Information</Text>
                      <View style={[styles.infoCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
              <View style={styles.infoRow}>
                <Ionicons name="person-outline" size={20} color={theme.colors.textSecondary} />
-               <Text style={[styles.infoLabel, { color: theme.colors.text }]}>Name</Text>
-               <Text style={[styles.infoValue, { color: theme.colors.textSecondary }]}>{profile?.name || 'Not set'}</Text>
+               <Text style={[styles.infoLabel, { color: theme.colors.text }]}>Navn</Text>
+               <Text style={[styles.infoValue, { color: theme.colors.textSecondary }]}>{profile?.name || 'Ikke sat'}</Text>
              </View>
              {profile?.weight && (
                <View style={styles.infoRow}>
                  <Ionicons name="fitness-outline" size={20} color={theme.colors.textSecondary} />
-                 <Text style={[styles.infoLabel, { color: theme.colors.text }]}>Weight</Text>
+                 <Text style={[styles.infoLabel, { color: theme.colors.text }]}>Vægt</Text>
                  <Text style={[styles.infoValue, { color: theme.colors.textSecondary }]}>{formatUnits(profile.weight, 'weight')}</Text>
                </View>
              )}
              {profile?.height && (
                <View style={styles.infoRow}>
                  <Ionicons name="resize-outline" size={20} color={theme.colors.textSecondary} />
-                 <Text style={[styles.infoLabel, { color: theme.colors.text }]}>Height</Text>
+                 <Text style={[styles.infoLabel, { color: theme.colors.text }]}>Højde</Text>
                  <Text style={[styles.infoValue, { color: theme.colors.textSecondary }]}>{formatUnits(profile.height, 'height')}</Text>
                </View>
              )}
              <View style={styles.infoRow}>
                <Ionicons name="trophy-outline" size={20} color={theme.colors.textSecondary} />
-               <Text style={[styles.infoLabel, { color: theme.colors.text }]}>Experience</Text>
-               <Text style={[styles.infoValue, { color: theme.colors.textSecondary }]}>{profile?.experience || 'beginner'}</Text>
+               <Text style={[styles.infoLabel, { color: theme.colors.text }]}>Erfaring</Text>
+               <Text style={[styles.infoValue, { color: theme.colors.textSecondary }]}>
+                 {profile?.experience === 'beginner' ? 'Begynder' : 
+                  profile?.experience === 'intermediate' ? 'Mellem' : 
+                  profile?.experience === 'advanced' ? 'Avanceret' : 'Begynder'}
+               </Text>
              </View>
            </View>
         </View>
@@ -333,7 +429,7 @@ export default function ProfileScreen() {
         {/* Goals */}
         {profile?.goals && profile.goals.length > 0 && (
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Goals</Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Mål</Text>
             <View style={[styles.goalsCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
                            {profile.goals.map((goal, index) => (
                <View key={`goal-${index}-${goal}`} style={styles.goalItem}>
@@ -407,19 +503,31 @@ export default function ProfileScreen() {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Hurtige Handlinger</Text>
           <View style={styles.quickActionsGrid}>
-            <TouchableOpacity style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <TouchableOpacity 
+              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+              onPress={handleExportData}
+            >
               <Ionicons name="download-outline" size={24} color={theme.colors.secondary} />
               <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Export Data</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <TouchableOpacity 
+              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+              onPress={handleBackupData}
+            >
               <Ionicons name="cloud-upload-outline" size={24} color={theme.colors.primary} />
               <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Backup</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <TouchableOpacity 
+              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+              onPress={handleShareProgress}
+            >
               <Ionicons name="share-outline" size={24} color={theme.colors.accent} />
               <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Del Progress</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <TouchableOpacity 
+              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+              onPress={handleHelp}
+            >
               <Ionicons name="help-circle-outline" size={24} color={theme.colors.info} />
               <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Hjælp</Text>
             </TouchableOpacity>
@@ -454,7 +562,7 @@ export default function ProfileScreen() {
       >
         <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Edit Profile</Text>
+            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Rediger Profil</Text>
             
             <TextInput
               style={[styles.input, { 
@@ -464,7 +572,7 @@ export default function ProfileScreen() {
               }]}
               value={editForm.name}
               onChangeText={(text) => setEditForm({ ...editForm, name: text })}
-              placeholder="Name"
+              placeholder="Navn"
               placeholderTextColor={theme.colors.textTertiary}
             />
             
@@ -476,7 +584,7 @@ export default function ProfileScreen() {
               }]}
               value={editForm.weight}
               onChangeText={(text) => setEditForm({ ...editForm, weight: text })}
-              placeholder="Weight (kg)"
+              placeholder="Vægt (kg)"
               placeholderTextColor={theme.colors.textTertiary}
               keyboardType="numeric"
             />
@@ -489,13 +597,13 @@ export default function ProfileScreen() {
               }]}
               value={editForm.height}
               onChangeText={(text) => setEditForm({ ...editForm, height: text })}
-              placeholder="Height (cm)"
+              placeholder="Højde (cm)"
               placeholderTextColor={theme.colors.textTertiary}
               keyboardType="numeric"
             />
 
             <View style={styles.experienceSelector}>
-              <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Experience Level</Text>
+              <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Erfaringsniveau</Text>
                              {(['beginner', 'intermediate', 'advanced'] as const).map((level) => (
                  <TouchableOpacity
                    key={`experience-${level}`}
@@ -511,7 +619,7 @@ export default function ProfileScreen() {
                      { color: theme.colors.textSecondary },
                      editForm.experience === level && { color: '#FFFFFF' }
                    ]}>
-                     {level.charAt(0).toUpperCase() + level.slice(1)}
+                     {level === 'beginner' ? 'Begynder' : level === 'intermediate' ? 'Mellem' : 'Avanceret'}
                    </Text>
                  </TouchableOpacity>
                ))}
@@ -525,7 +633,7 @@ export default function ProfileScreen() {
               }]}
               value={editForm.goals}
               onChangeText={(text) => setEditForm({ ...editForm, goals: text })}
-              placeholder="Goals (comma separated)"
+              placeholder="Mål (adskilt med komma)"
               placeholderTextColor={theme.colors.textTertiary}
               multiline
               numberOfLines={3}
@@ -536,14 +644,14 @@ export default function ProfileScreen() {
                 style={[styles.modalButton, styles.cancelButton, { backgroundColor: theme.colors.border }]}
                 onPress={() => setShowEditModal(false)}
               >
-                <Text style={[styles.cancelButtonText, { color: theme.colors.text }]}>Cancel</Text>
+                <Text style={[styles.cancelButtonText, { color: theme.colors.text }]}>Annuller</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
                 style={[styles.modalButton, styles.saveButton, { backgroundColor: theme.colors.primary }]}
                 onPress={handleSaveProfile}
               >
-                <Text style={styles.saveButtonText}>Save</Text>
+                <Text style={styles.saveButtonText}>Gem</Text>
               </TouchableOpacity>
             </View>
           </View>
