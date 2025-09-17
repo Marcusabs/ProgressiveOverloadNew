@@ -267,7 +267,16 @@ export default function ProfileScreen() {
                 DELETE FROM progress_data;
                 DELETE FROM template_exercises;
                 DELETE FROM workout_templates;
+                DELETE FROM exercises;
+                DELETE FROM training_sessions;
+                DELETE FROM muscle_groups;
               `);
+              
+              // Reload all data to reflect changes
+              await loadUserProfile();
+              await loadAchievements();
+              await loadUserStats();
+              
               Alert.alert('Succes', 'Alle data er blevet slettet');
             } catch (error) {
               console.error('Error clearing data:', error);

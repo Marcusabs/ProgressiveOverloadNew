@@ -27,6 +27,8 @@ interface ExerciseState {
   updateSetInExercise: (workoutId: string, exerciseId: string, setIndex: number, reps: number, weight: number) => Promise<void>;
   deleteSetFromExercise: (workoutId: string, exerciseId: string, setIndex: number) => Promise<void>;
   addWorkout: (workout: Omit<Workout, 'id' | 'created_at'>) => Promise<Workout>;
+  deleteWorkout: (workoutId: string) => Promise<void>;
+  updateWorkout: (workoutId: string, updates: { name?: string; notes?: string; date?: string }) => Promise<void>;
   getProgressiveOverloadSuggestions: (sessionId: string) => Promise<ProgressiveOverloadSuggestion[]>;
   setSelectedSession: (session: TrainingSession | null) => void;
   setCurrentWorkout: (workout: Workout | null) => void;
@@ -549,7 +551,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         throw new Error('Set index out of range');
       }
 
-      const setToUpdate = sets[setIndex];
+      const setToUpdate = sets[setIndex] as { id: string; order_index: number };
       
       // Update the specific set
       await db.runAsync(`
@@ -589,7 +591,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         throw new Error('Set index out of range');
       }
 
-      const setToDelete = sets[setIndex];
+      const setToDelete = sets[setIndex] as { id: string; order_index: number };
       
       // Delete the specific set
       await db.runAsync(`
@@ -598,9 +600,10 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
 
       // Update order_index for remaining sets
       for (let i = setIndex + 1; i < sets.length; i++) {
+        const remainingSet = sets[i] as { id: string; order_index: number };
         await db.runAsync(`
           UPDATE sets SET order_index = ? WHERE id = ?
-        `, [i, sets[i].id]);
+        `, [i, remainingSet.id]);
       }
 
       console.log('Set deleted successfully:', { setId: setToDelete.id, setIndex });
@@ -699,6 +702,73 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       return newWorkout;
     } catch (error) {
       console.error('Failed to add workout:', error);
+      throw error;
+    }
+  },
+
+  deleteWorkout: async (workoutId) => {
+    try {
+      const db = getDatabase();
+      
+      // Delete all related data first
+      await db.runAsync('DELETE FROM workout_sets WHERE workout_exercise_id IN (SELECT id FROM workout_exercises WHERE workout_id = ?)', [workoutId]);
+      await db.runAsync('DELETE FROM workout_exercises WHERE workout_id = ?', [workoutId]);
+      await db.runAsync('DELETE FROM progress_data WHERE workout_id = ?', [workoutId]);
+      await db.runAsync('DELETE FROM workouts WHERE id = ?', [workoutId]);
+      
+      // Update local state
+      set(state => ({
+        workouts: state.workouts.filter(workout => workout.id !== workoutId)
+      }));
+    } catch (error) {
+      console.error('Failed to delete workout:', error);
+      throw error;
+    }
+  },
+
+  updateWorkout: async (workoutId, updates) => {
+    try {
+      const db = getDatabase();
+      
+      // Build dynamic update query
+      const updateFields = [];
+      const values = [];
+      
+      if (updates.name !== undefined) {
+        updateFields.push('name = ?');
+        values.push(updates.name);
+      }
+      if (updates.notes !== undefined) {
+        updateFields.push('notes = ?');
+        values.push(updates.notes);
+      }
+      if (updates.date !== undefined) {
+        updateFields.push('date = ?');
+        values.push(updates.date);
+      }
+      
+      if (updateFields.length === 0) {
+        return; // No updates to make
+      }
+      
+      values.push(workoutId);
+      
+      await db.runAsync(`
+        UPDATE workouts 
+        SET ${updateFields.join(', ')} 
+        WHERE id = ?
+      `, values);
+      
+      // Update local state
+      set(state => ({
+        workouts: state.workouts.map(workout => 
+          workout.id === workoutId 
+            ? { ...workout, ...updates }
+            : workout
+        )
+      }));
+    } catch (error) {
+      console.error('Failed to update workout:', error);
       throw error;
     }
   }

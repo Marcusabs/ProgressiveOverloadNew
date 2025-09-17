@@ -23,7 +23,7 @@ import { TrainingSession, Exercise, Workout, Set } from '../types';
 import { getDatabase } from '../database';
 
 export default function WorkoutHistoryScreen() {
-  const { trainingSessions, exercises, loadTrainingSessions, loadExercises, addWorkout, addSetToExercise, startWorkout, endWorkout, getExercisesBySession } = useExerciseStore();
+  const { trainingSessions, exercises, loadTrainingSessions, loadExercises, addWorkout, addSetToExercise, startWorkout, endWorkout, getExercisesBySession, deleteWorkout, updateWorkout } = useExerciseStore();
   const { progressData, getRecentWorkouts } = useProgressStore();
   const { theme, isDark } = useTheme();
   
@@ -33,6 +33,9 @@ export default function WorkoutHistoryScreen() {
   const [showWorkoutDetails, setShowWorkoutDetails] = useState(false);
   const [selectedWorkout, setSelectedWorkout] = useState<any>(null);
   const [selectedSession, setSelectedSession] = useState<TrainingSession | null>(null);
+  const [showEditWorkout, setShowEditWorkout] = useState(false);
+  const [editingWorkout, setEditingWorkout] = useState<any>(null);
+  const [editWorkoutData, setEditWorkoutData] = useState({ name: '', notes: '', date: '' });
   
   // Local workout state for manual training (separate from global currentWorkout)
   const [currentWorkout, setCurrentWorkout] = useState<Workout | null>(null);
@@ -99,6 +102,24 @@ export default function WorkoutHistoryScreen() {
       }
     };
   }, [restTimerInterval]);
+
+  // Load sets for current exercise when exercise index changes (manual training)
+  useEffect(() => {
+    if (currentWorkout?.id.startsWith('manual-') && selectedSession) {
+      const sessionExercises = getExercisesBySession(currentWorkout.session_id);
+      const currentExercise = sessionExercises[currentExerciseIndex];
+      
+      if (currentExercise) {
+        // Load saved sets for this exercise
+        const savedSets = exerciseSets[currentExercise.id] || [];
+        const completedSetsFromSaved = savedSets.map(set => ({
+          reps: set.reps,
+          weight: set.weight
+        }));
+        setCompletedSets(completedSetsFromSaved);
+      }
+    }
+  }, [currentExerciseIndex, currentWorkout, selectedSession, exerciseSets]);
 
   // Cleanup training states when component unmounts
   useEffect(() => {
@@ -249,9 +270,11 @@ export default function WorkoutHistoryScreen() {
       const workout = {
         id: `manual-${Date.now()}`,
         session_id: session.id,
+        name: session.name,
         date: workoutDate,
         duration: 0,
         notes: '',
+        completed: false,
         created_at: new Date().toISOString()
       };
       
@@ -334,15 +357,14 @@ export default function WorkoutHistoryScreen() {
         setCompletedSets([...completedSets, { reps, weight }]);
         setCurrentSet({ reps: '', weight: '' });
         
-        // Start rest timer after adding a set
-        startRestTimer(90); // Default 90 seconds
+        // NO rest timer for manual training
       } else {
         // For real workouts, save to database
         await addSetToExercise(currentWorkout.id, currentExercise.id, reps, weight);
         setCompletedSets([...completedSets, { reps, weight }]);
         setCurrentSet({ reps: '', weight: '' });
         
-        // Start rest timer after adding a set
+        // Start rest timer after adding a set (only for live training)
         startRestTimer(90); // Default 90 seconds
       }
     } catch (error) {
@@ -405,6 +427,25 @@ export default function WorkoutHistoryScreen() {
   const handleNextExercise = () => {
     const sessionExercises = getExercisesBySession(currentWorkout?.session_id || '');
     if (currentExerciseIndex < sessionExercises.length - 1) {
+      // Save current exercise's sets before moving to next
+      if (currentWorkout?.id.startsWith('manual-') && completedSets.length > 0) {
+        const currentExercise = sessionExercises[currentExerciseIndex];
+        if (currentExercise) {
+          const setsAsSetObjects = completedSets.map((set, index) => ({
+            id: `temp-${Date.now()}-${index}`,
+            workout_exercise_id: '',
+            reps: set.reps,
+            weight: set.weight,
+            completed: true,
+            order_index: index
+          }));
+          setExerciseSets(prev => ({
+            ...prev,
+            [currentExercise.id]: setsAsSetObjects
+          }));
+        }
+      }
+      
       setCurrentExerciseIndex(currentExerciseIndex + 1);
       setCompletedSets([]);
       setCurrentSet({ reps: '', weight: '' });
@@ -413,6 +454,26 @@ export default function WorkoutHistoryScreen() {
 
   const handlePreviousExercise = () => {
     if (currentExerciseIndex > 0) {
+      // Save current exercise's sets before moving to previous
+      if (currentWorkout?.id.startsWith('manual-') && completedSets.length > 0) {
+        const sessionExercises = getExercisesBySession(currentWorkout?.session_id || '');
+        const currentExercise = sessionExercises[currentExerciseIndex];
+        if (currentExercise) {
+          const setsAsSetObjects = completedSets.map((set, index) => ({
+            id: `temp-${Date.now()}-${index}`,
+            workout_exercise_id: '',
+            reps: set.reps,
+            weight: set.weight,
+            completed: true,
+            order_index: index
+          }));
+          setExerciseSets(prev => ({
+            ...prev,
+            [currentExercise.id]: setsAsSetObjects
+          }));
+        }
+      }
+      
       setCurrentExerciseIndex(currentExerciseIndex - 1);
       setCompletedSets([]);
       setCurrentSet({ reps: '', weight: '' });
@@ -507,34 +568,55 @@ export default function WorkoutHistoryScreen() {
             try {
               // For manual training, create a real workout in the database
               if (currentWorkout.id.startsWith('manual-')) {
+                // Save current exercise's sets before creating workout
+                if (completedSets.length > 0) {
+                  const sessionExercises = getExercisesBySession(currentWorkout.session_id);
+                  const currentExercise = sessionExercises[currentExerciseIndex];
+                  if (currentExercise) {
+                    const setsAsSetObjects = completedSets.map((set, index) => ({
+                      id: `temp-${Date.now()}-${index}`,
+                      workout_exercise_id: '',
+                      reps: set.reps,
+                      weight: set.weight,
+                      completed: true,
+                      order_index: index
+                    }));
+                    setExerciseSets(prev => ({
+                      ...prev,
+                      [currentExercise.id]: setsAsSetObjects
+                    }));
+                  }
+                }
+                
                 // Create a real workout in the database
                 const db = getDatabase();
                 const result = await db.runAsync(`
-                  INSERT INTO workouts (session_id, date, duration, notes, created_at)
-                  VALUES (?, ?, ?, ?, ?)
-                `, [currentWorkout.session_id, workoutDate, duration, '', new Date().toISOString()]);
+                  INSERT INTO workouts (session_id, name, date, duration, notes, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?)
+                `, [currentWorkout.session_id, selectedSession?.name || 'Manual Workout', workoutDate, duration, '', new Date().toISOString()]);
                 
-                const newWorkoutId = result.lastInsertRowId?.toString();
+                const newWorkoutId = (result as any).lastInsertRowId?.toString();
                 
                 // Save any completed sets
                 for (const [exerciseId, sets] of Object.entries(exerciseSets)) {
                   if (sets.length > 0) {
                     await db.runAsync(`
-                      INSERT INTO workout_exercises (workout_id, exercise_id, created_at)
+                      INSERT INTO workout_exercises (workout_id, exercise_id, order_index)
                       VALUES (?, ?, ?)
-                    `, [newWorkoutId, exerciseId, new Date().toISOString()]);
+                    `, [newWorkoutId, exerciseId, 0]);
                     
-                    const workoutExerciseResult = await db.runAsync(`
+                    const workoutExerciseResult = await db.getAllAsync(`
                       SELECT id FROM workout_exercises WHERE workout_id = ? AND exercise_id = ?
                     `, [newWorkoutId, exerciseId]);
                     
-                    const workoutExerciseId = workoutExerciseResult.rows?.[0]?.id;
+                    const workoutExerciseId = (workoutExerciseResult[0] as any)?.id;
                     
-                    for (const set of sets) {
+                    for (let i = 0; i < sets.length; i++) {
+                      const set = sets[i];
                       await db.runAsync(`
-                        INSERT INTO sets (workout_exercise_id, reps, weight, created_at)
+                        INSERT INTO sets (workout_exercise_id, reps, weight, order_index)
                         VALUES (?, ?, ?, ?)
-                      `, [workoutExerciseId, set.reps, set.weight, new Date().toISOString()]);
+                      `, [workoutExerciseId, set.reps, set.weight, i]);
                     }
                   }
                 }
@@ -555,6 +637,56 @@ export default function WorkoutHistoryScreen() {
             } catch (error) {
               console.error('Error ending workout:', error);
               Alert.alert('Fejl', 'Kunne ikke gemme træning');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleEditWorkout = (workout: any) => {
+    setEditingWorkout(workout);
+    setEditWorkoutData({
+      name: workout.name || '',
+      notes: workout.notes || '',
+      date: workout.date || ''
+    });
+    setShowEditWorkout(true);
+  };
+
+  const handleSaveEditWorkout = async () => {
+    if (!editingWorkout) return;
+
+    try {
+      await updateWorkout(editingWorkout.id, editWorkoutData);
+      await loadData(); // Reload data to reflect changes
+      setShowEditWorkout(false);
+      setEditingWorkout(null);
+      setEditWorkoutData({ name: '', notes: '', date: '' });
+      Alert.alert('Succes', 'Træning opdateret!');
+    } catch (error) {
+      console.error('Error updating workout:', error);
+      Alert.alert('Fejl', 'Kunne ikke opdatere træning');
+    }
+  };
+
+  const handleDeleteWorkout = (workout: any) => {
+    Alert.alert(
+      'Slet Træning',
+      `Er du sikker på at du vil slette "${workout.name}"?\n\nDenne handling kan ikke fortrydes.`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        {
+          text: 'Slet',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteWorkout(workout.id);
+              await loadData(); // Reload data to reflect changes
+              Alert.alert('Succes', 'Træning slettet!');
+            } catch (error) {
+              console.error('Error deleting workout:', error);
+              Alert.alert('Fejl', 'Kunne ikke slette træning');
             }
           }
         }
@@ -611,11 +743,33 @@ export default function WorkoutHistoryScreen() {
               {formatDate(workout.date)}
             </Text>
           </View>
-          <View style={[styles.workoutStatus, { 
-            backgroundColor: stats.completionRate === 100 ? '#4CAF50' : 
-                           stats.completionRate >= 50 ? '#FF9800' : '#F44336'
-          }]}>
-            <Text style={styles.workoutStatusText}>{stats.completionRate}%</Text>
+          <View style={styles.workoutActions}>
+            <View style={[styles.workoutStatus, { 
+              backgroundColor: stats.completionRate === 100 ? '#4CAF50' : 
+                             stats.completionRate >= 50 ? '#FF9800' : '#F44336'
+            }]}>
+              <Text style={styles.workoutStatusText}>{stats.completionRate}%</Text>
+            </View>
+            <View style={styles.workoutActionButtons}>
+              <TouchableOpacity
+                style={[styles.workoutActionButton, { backgroundColor: theme.colors.primary }]}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleEditWorkout(workout);
+                }}
+              >
+                <Ionicons name="pencil" size={16} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.workoutActionButton, { backgroundColor: theme.colors.accent }]}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleDeleteWorkout(workout);
+                }}
+              >
+                <Ionicons name="trash" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
         
@@ -874,12 +1028,10 @@ export default function WorkoutHistoryScreen() {
                 <Text style={[styles.liveTrainingTitle, { color: theme.colors.text }]}>
                   {selectedSession.name}
                 </Text>
-                {/* Only show exercise count for live training */}
-                {trainingStartTime && (
-                  <Text style={[styles.liveTrainingSubtitle, { color: theme.colors.textSecondary }]}>
-                    Øvelse {currentExerciseIndex + 1} af {sessionExercises.length}
-                  </Text>
-                )}
+                {/* Show exercise count for both live and manual training */}
+                <Text style={[styles.liveTrainingSubtitle, { color: theme.colors.textSecondary }]}>
+                  Øvelse {currentExerciseIndex + 1} af {sessionExercises.length}
+                </Text>
               </View>
               <TouchableOpacity
                 style={[styles.endTrainingButton, { backgroundColor: theme.colors.accent }]}
@@ -889,143 +1041,146 @@ export default function WorkoutHistoryScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Live Training Stats - Only show when trainingStartTime is set (actual live training) */}
-            {trainingStartTime && (
-              <View style={styles.trainingStats}>
-                <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
-                  <Ionicons name="time" size={20} color={theme.colors.primary} />
-                  <Text style={[styles.statValue, { color: theme.colors.text }]}>{getTrainingDuration()}</Text>
-                  <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Tid</Text>
-                </View>
-                <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
-                  <Ionicons name="flame" size={20} color={theme.colors.accent} />
-                  <Text style={[styles.statValue, { color: theme.colors.text }]}>{getEstimatedCalories()}</Text>
-                  <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Kalorier</Text>
-                </View>
-                <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
-                  <Ionicons name="fitness" size={20} color={theme.colors.secondary} />
-                  <Text style={[styles.statValue, { color: theme.colors.text }]}>
-                    {currentExerciseIndex + 1}/{sessionExercises.length}
-                  </Text>
-                  <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Øvelse</Text>
-                </View>
-              </View>
-            )}
-
-            {/* Date Picker (Calendar) - Only for manual training */}
-            <View style={[styles.dateInputContainer, { backgroundColor: theme.colors.card }]}> 
-              <Text style={[styles.dateInputLabel, { color: theme.colors.text }]}> 
-                Træningsdato:
-              </Text>
-              <Calendar
-                onDayPress={(day) => setWorkoutDate(day.dateString)}
-                markedDates={{ [workoutDate]: { selected: true } }}
-                theme={{
-                  calendarBackground: theme.colors.card,
-                  textSectionTitleColor: theme.colors.textSecondary,
-                  selectedDayBackgroundColor: theme.colors.primary,
-                  selectedDayTextColor: '#ffffff',
-                  todayTextColor: theme.colors.accent,
-                  dayTextColor: theme.colors.text,
-                  textDisabledColor: theme.colors.textTertiary,
-                  monthTextColor: theme.colors.text,
-                  arrowColor: theme.colors.primary,
-                }}
-              />
-            </View>
-
-            {/* Current Exercise */}
-            {currentExercise && (
-              <View style={[styles.currentExerciseCard, { backgroundColor: theme.colors.card }]}>
-                <Text style={[styles.currentExerciseName, { color: theme.colors.text }]}>
-                  {currentExercise.name}
-                </Text>
-                <Text style={[styles.currentExerciseDescription, { color: theme.colors.textSecondary }]}>
-                  {currentExercise.description}
-                </Text>
-              </View>
-            )}
-
-            {/* Completed Sets */}
-            {completedSets.length > 0 && (
-              <View style={styles.completedSetsContainer}>
-                <Text style={[styles.completedSetsTitle, { color: theme.colors.text }]}>
-                  Færdige sæt:
-                </Text>
-                {completedSets.map((set, index) => (
-                  <View key={`completed-set-${index}`} style={[styles.completedSetItem, { backgroundColor: theme.colors.background }]}>
-                    <Text style={[styles.completedSetText, { color: theme.colors.text }]}>
-                      Sæt {index + 1}: {set.reps} x {set.weight} kg
-                    </Text>
+            {/* Scrollable Content */}
+            <ScrollView style={styles.liveTrainingScrollView} showsVerticalScrollIndicator={false}>
+              {/* Live Training Stats - Only show when trainingStartTime is set (actual live training) */}
+              {trainingStartTime && (
+                <View style={styles.trainingStats}>
+                  <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
+                    <Ionicons name="time" size={20} color={theme.colors.primary} />
+                    <Text style={[styles.statValue, { color: theme.colors.text }]}>{getTrainingDuration()}</Text>
+                    <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Tid</Text>
                   </View>
-                ))}
-              </View>
-            )}
+                  <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
+                    <Ionicons name="flame" size={20} color={theme.colors.accent} />
+                    <Text style={[styles.statValue, { color: theme.colors.text }]}>{getEstimatedCalories()}</Text>
+                    <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Kalorier</Text>
+                  </View>
+                  <View style={[styles.statCard, { backgroundColor: theme.colors.card }]}>
+                    <Ionicons name="fitness" size={20} color={theme.colors.secondary} />
+                    <Text style={[styles.statValue, { color: theme.colors.text }]}>
+                      {currentExerciseIndex + 1}/{sessionExercises.length}
+                    </Text>
+                    <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Øvelse</Text>
+                  </View>
+                </View>
+              )}
 
-            {/* Rest Timer */}
-            {restTimer.isActive && (
-              <View style={[styles.restTimerContainer, { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary }]}>
-                <View style={styles.restTimerHeader}>
-                  <Ionicons name="timer" size={24} color={theme.colors.primary} />
-                  <Text style={[styles.restTimerTitle, { color: theme.colors.primary }]}>Hvile</Text>
+              {/* Date Picker (Calendar) - Only for manual training */}
+              <View style={[styles.dateInputContainer, { backgroundColor: theme.colors.card }]}> 
+                <Text style={[styles.dateInputLabel, { color: theme.colors.text }]}> 
+                  Træningsdato:
+                </Text>
+                <Calendar
+                  onDayPress={(day) => setWorkoutDate(day.dateString)}
+                  markedDates={{ [workoutDate]: { selected: true } }}
+                  theme={{
+                    calendarBackground: theme.colors.card,
+                    textSectionTitleColor: theme.colors.textSecondary,
+                    selectedDayBackgroundColor: theme.colors.primary,
+                    selectedDayTextColor: '#ffffff',
+                    todayTextColor: theme.colors.accent,
+                    dayTextColor: theme.colors.text,
+                    textDisabledColor: theme.colors.textTertiary,
+                    monthTextColor: theme.colors.text,
+                    arrowColor: theme.colors.primary,
+                  }}
+                />
+              </View>
+
+              {/* Current Exercise */}
+              {currentExercise && (
+                <View style={[styles.currentExerciseCard, { backgroundColor: theme.colors.card }]}>
+                  <Text style={[styles.currentExerciseName, { color: theme.colors.text }]}>
+                    {currentExercise.name}
+                  </Text>
+                  <Text style={[styles.currentExerciseDescription, { color: theme.colors.textSecondary }]}>
+                    {currentExercise.description}
+                  </Text>
+                </View>
+              )}
+
+              {/* Completed Sets */}
+              {completedSets.length > 0 && (
+                <View style={styles.completedSetsContainer}>
+                  <Text style={[styles.completedSetsTitle, { color: theme.colors.text }]}>
+                    Færdige sæt:
+                  </Text>
+                  {completedSets.map((set, index) => (
+                    <View key={`completed-set-${index}`} style={[styles.completedSetItem, { backgroundColor: theme.colors.background }]}>
+                      <Text style={[styles.completedSetText, { color: theme.colors.text }]}>
+                        Sæt {index + 1}: {set.reps} x {set.weight} kg
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Rest Timer */}
+              {restTimer.isActive && (
+                <View style={[styles.restTimerContainer, { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary }]}>
+                  <View style={styles.restTimerHeader}>
+                    <Ionicons name="timer" size={24} color={theme.colors.primary} />
+                    <Text style={[styles.restTimerTitle, { color: theme.colors.primary }]}>Hvile</Text>
+                    <TouchableOpacity
+                      style={[styles.stopTimerButton, { backgroundColor: theme.colors.accent }]}
+                      onPress={stopRestTimer}
+                    >
+                      <Ionicons name="stop" size={16} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={[styles.restTimerTime, { color: theme.colors.primary }]}>
+                    {formatTime(restTimer.timeLeft)}
+                  </Text>
+                  <View style={[styles.restTimerProgress, { backgroundColor: theme.colors.divider }]}>
+                    <View 
+                      style={[
+                        styles.restTimerProgressBar, 
+                        { 
+                          backgroundColor: theme.colors.primary,
+                          width: `${((restTimer.totalTime - restTimer.timeLeft) / restTimer.totalTime) * 100}%`
+                        }
+                      ]} 
+                    />
+                  </View>
+                  <Text style={[styles.restTimerHint, { color: theme.colors.textSecondary }]}>
+                    {restTimer.timeLeft > 0 ? 'Forbered dig til næste sæt' : 'Klar til næste sæt!'}
+                  </Text>
+                </View>
+              )}
+
+              {/* Add Set Input */}
+              <View style={[styles.addSetContainer, { backgroundColor: theme.colors.card }]}>
+                <Text style={[styles.addSetTitle, { color: theme.colors.text }]}>
+                  Tilføj sæt:
+                </Text>
+                <View style={styles.addSetInputs}>
+                  <TextInput
+                    style={[styles.addSetInput, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
+                    value={currentSet.reps}
+                    onChangeText={(text) => setCurrentSet({ ...currentSet, reps: text })}
+                    placeholder="Reps"
+                    keyboardType="numeric"
+                    placeholderTextColor={theme.colors.textTertiary}
+                  />
+                  <Text style={[styles.addSetLabel, { color: theme.colors.textSecondary }]}>x</Text>
+                  <TextInput
+                    style={[styles.addSetInput, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
+                    value={currentSet.weight}
+                    onChangeText={(text) => setCurrentSet({ ...currentSet, weight: text })}
+                    placeholder="Kg"
+                    keyboardType="numeric"
+                    placeholderTextColor={theme.colors.textTertiary}
+                  />
                   <TouchableOpacity
-                    style={[styles.stopTimerButton, { backgroundColor: theme.colors.accent }]}
-                    onPress={stopRestTimer}
+                    style={[styles.addSetButton, { backgroundColor: theme.colors.primary }]}
+                    onPress={handleAddSet}
                   >
-                    <Ionicons name="stop" size={16} color="#fff" />
+                    <Ionicons name="add" size={20} color="#fff" />
                   </TouchableOpacity>
                 </View>
-                <Text style={[styles.restTimerTime, { color: theme.colors.primary }]}>
-                  {formatTime(restTimer.timeLeft)}
-                </Text>
-                <View style={[styles.restTimerProgress, { backgroundColor: theme.colors.divider }]}>
-                  <View 
-                    style={[
-                      styles.restTimerProgressBar, 
-                      { 
-                        backgroundColor: theme.colors.primary,
-                        width: `${((restTimer.totalTime - restTimer.timeLeft) / restTimer.totalTime) * 100}%`
-                      }
-                    ]} 
-                  />
-                </View>
-                <Text style={[styles.restTimerHint, { color: theme.colors.textSecondary }]}>
-                  {restTimer.timeLeft > 0 ? 'Forbered dig til næste sæt' : 'Klar til næste sæt!'}
-                </Text>
               </View>
-            )}
-
-            {/* Add Set Input */}
-            <View style={[styles.addSetContainer, { backgroundColor: theme.colors.card }]}>
-              <Text style={[styles.addSetTitle, { color: theme.colors.text }]}>
-                Tilføj sæt:
-              </Text>
-              <View style={styles.addSetInputs}>
-                <TextInput
-                  style={[styles.addSetInput, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
-                  value={currentSet.reps}
-                  onChangeText={(text) => setCurrentSet({ ...currentSet, reps: text })}
-                  placeholder="Reps"
-                  keyboardType="numeric"
-                  placeholderTextColor={theme.colors.textTertiary}
-                />
-                <Text style={[styles.addSetLabel, { color: theme.colors.textSecondary }]}>x</Text>
-                <TextInput
-                  style={[styles.addSetInput, { backgroundColor: theme.colors.background, color: theme.colors.text, borderColor: theme.colors.border }]}
-                  value={currentSet.weight}
-                  onChangeText={(text) => setCurrentSet({ ...currentSet, weight: text })}
-                  placeholder="Kg"
-                  keyboardType="numeric"
-                  placeholderTextColor={theme.colors.textTertiary}
-                />
-                <TouchableOpacity
-                  style={[styles.addSetButton, { backgroundColor: theme.colors.primary }]}
-                  onPress={handleAddSet}
-                >
-                  <Ionicons name="add" size={20} color="#fff" />
-                </TouchableOpacity>
-              </View>
-            </View>
+            </ScrollView>
 
             {/* Navigation */}
             <View style={styles.exerciseNavigation}>
@@ -1096,6 +1251,83 @@ export default function WorkoutHistoryScreen() {
             )}
             style={styles.exerciseList}
           />
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderEditWorkoutModal = () => (
+    <Modal
+      visible={showEditWorkout}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={() => setShowEditWorkout(false)}
+    >
+      <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
+        <View style={[styles.editWorkoutModal, { backgroundColor: theme.colors.surface }]}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => setShowEditWorkout(false)}
+            >
+              <Ionicons name="arrow-back" size={24} color={theme.colors.primary} />
+            </TouchableOpacity>
+            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Rediger Træning</Text>
+            <View style={{ width: 24 }} />
+          </View>
+          
+          <ScrollView style={styles.modalContent}>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Træningsnavn</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: theme.colors.card, color: theme.colors.text, borderColor: theme.colors.border }]}
+                value={editWorkoutData.name}
+                onChangeText={(text) => setEditWorkoutData({ ...editWorkoutData, name: text })}
+                placeholder="Indtast træningsnavn"
+                placeholderTextColor={theme.colors.textTertiary}
+              />
+            </View>
+            
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Dato</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: theme.colors.card, color: theme.colors.text, borderColor: theme.colors.border }]}
+                value={editWorkoutData.date}
+                onChangeText={(text) => setEditWorkoutData({ ...editWorkoutData, date: text })}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={theme.colors.textTertiary}
+              />
+            </View>
+            
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Noter</Text>
+              <TextInput
+                style={[styles.textArea, { backgroundColor: theme.colors.card, color: theme.colors.text, borderColor: theme.colors.border }]}
+                value={editWorkoutData.notes}
+                onChangeText={(text) => setEditWorkoutData({ ...editWorkoutData, notes: text })}
+                placeholder="Tilføj noter til træningen..."
+                placeholderTextColor={theme.colors.textTertiary}
+                multiline
+                numberOfLines={4}
+              />
+            </View>
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: theme.colors.divider }]}
+                onPress={() => setShowEditWorkout(false)}
+              >
+                <Text style={[styles.modalButtonText, { color: theme.colors.text }]}>Annuller</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: theme.colors.primary }]}
+                onPress={handleSaveEditWorkout}
+              >
+                <Text style={[styles.modalButtonText, { color: '#fff' }]}>Gem</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -1207,6 +1439,7 @@ export default function WorkoutHistoryScreen() {
 
       {renderCreateWorkoutModal()}
       {renderAddExerciseModal()}
+      {renderEditWorkoutModal()}
       {showLiveTraining && renderLiveTrainingModal(true)}
     </View>
   );
@@ -1444,6 +1677,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  workoutActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  workoutActionButtons: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  workoutActionButton: {
+    padding: 6,
+    borderRadius: 6,
   },
   workoutStats: {
     flexDirection: 'row',
@@ -1698,6 +1944,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  // Edit Workout Modal
+  editWorkoutModal: {
+    borderRadius: 12,
+    padding: 20,
+    width: '95%',
+    maxWidth: 500,
+    maxHeight: '90%',
+  },
   exerciseList: {
     maxHeight: 400,
   },
@@ -1742,7 +1996,11 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '95%',
     maxWidth: 500,
-    maxHeight: '90%',
+    height: '90%',
+  },
+  liveTrainingScrollView: {
+    flex: 1,
+    paddingBottom: 20,
   },
   liveTrainingHeader: {
     flexDirection: 'row',

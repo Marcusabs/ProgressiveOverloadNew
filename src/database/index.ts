@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { Platform } from 'react-native';
-import { createTables, seedDefaultExercises } from './schema';
+import { createTables } from './schema';
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -25,7 +25,6 @@ export const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
   
   // Only create tables if they don't exist - DON'T drop existing data!
   await createTables(db);
-  await seedDefaultExercises(db);
   
   return db;
 };
