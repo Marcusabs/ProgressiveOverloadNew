@@ -45,6 +45,12 @@
         }
       ]
     ],
+    "updates": {
+      "url": "https://u.expo.dev/da241e1c-568f-4857-a32f-7adbb38725f1"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "extra": {
       "eas": {
         "projectId": "da241e1c-568f-4857-a32f-7adbb38725f1"

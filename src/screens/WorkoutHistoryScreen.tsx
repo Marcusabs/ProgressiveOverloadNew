@@ -1400,7 +1400,7 @@ export default function WorkoutHistoryScreen() {
         <View style={styles.sessionsContainer}>
           <Text style={[styles.sessionsTitle, { color: theme.colors.text }]}>Dine Sessioner</Text>
           <Text style={[styles.sessionsSubtitle, { color: theme.colors.textSecondary }]}>
-            Klik på en session for at oprette træning
+            Klik på en session for at oprette en træning manuelt
           </Text>
           
           {trainingSessions.map((session) => (
