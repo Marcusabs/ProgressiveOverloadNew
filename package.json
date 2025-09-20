@@ -21,6 +21,7 @@
     "expo-linear-gradient": "~14.1.5",
     "expo-sqlite": "~15.2.14",
     "expo-status-bar": "~2.2.3",
+    "expo-updates": "^29.0.11",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.5",
