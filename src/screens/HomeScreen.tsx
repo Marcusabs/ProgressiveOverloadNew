@@ -22,6 +22,7 @@ import { useWorkoutStore } from '../stores/workoutStore';
 import { useExerciseStore } from '../stores/exerciseStore';
 import { useTheme } from '../contexts/ThemeContext';
 import { TrainingSession, Exercise } from '../types';
+import * as Updates from 'expo-updates';
 
 const { width } = Dimensions.get('window');
 
@@ -54,6 +55,42 @@ export default function HomeScreen() {
     favoriteMuscleGroup: 'Ingen'
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
+  const checkForUpdates = async () => {
+    try {
+      setIsCheckingUpdate(true);
+      const update = await Updates.checkForUpdateAsync();
+      
+      if (update.isAvailable) {
+        Alert.alert(
+          'Update tilgængelig',
+          'Der er en ny opdatering tilgængelig. Vil du hente den nu?',
+          [
+            { text: 'Senere', style: 'cancel' },
+            { 
+              text: 'Hent nu', 
+              onPress: async () => {
+                try {
+                  await Updates.fetchUpdateAsync();
+                  Alert.alert('Update hentet', 'Appen genstarter nu med den nye version.');
+                  await Updates.reloadAsync();
+                } catch (error) {
+                  Alert.alert('Fejl', 'Kunne ikke hente opdateringen.');
+                }
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Ingen opdatering', 'Du har allerede den nyeste version.');
+      }
+    } catch (error) {
+      Alert.alert('Fejl', 'Kunne ikke tjekke for opdateringer.');
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
 
   useEffect(() => {
     loadTrainingSessions();
@@ -204,12 +241,25 @@ export default function HomeScreen() {
               </Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={styles.profileButton}
-            onPress={() => navigation.navigate('Profile')}
-          >
-            <Ionicons name="person-circle" size={32} color="#fff" />
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              style={styles.devButton}
+              onPress={checkForUpdates}
+              disabled={isCheckingUpdate}
+            >
+              <Ionicons 
+                name={isCheckingUpdate ? "refresh" : "download"} 
+                size={24} 
+                color="#fff" 
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.profileButton}
+              onPress={() => navigation.navigate('Profile')}
+            >
+              <Ionicons name="person-circle" size={32} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
       </LinearGradient>
 
@@ -433,6 +483,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     opacity: 0.9,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  devButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   profileButton: {
     padding: 4,
