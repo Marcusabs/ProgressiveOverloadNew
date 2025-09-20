@@ -239,7 +239,7 @@ export default function HomeScreen() {
 
         {/* Quick Stats */}
         <View style={styles.statsSection}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Din Statistik</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>📊 Din Statistik</Text>
           <View style={styles.statsGrid}>
             <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
               <View style={[styles.statIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>

@@ -537,7 +537,7 @@ export default function ProgressScreen() {
 
         {/* User Stats Summary */}
         <View style={[styles.statsSummary, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-          <Text style={[styles.statsSummaryTitle, { color: theme.colors.text }]}>Din Statistik</Text>
+          <Text style={[styles.statsSummaryTitle, { color: theme.colors.text }]}>📊 Din Statistik</Text>
           <View style={styles.statsSummaryGrid}>
             <View style={styles.statsSummaryItem}>
               <Text style={[styles.statsSummaryValue, { color: theme.colors.primary }]}>{userStats.totalWorkouts}</Text>
@@ -728,7 +728,7 @@ export default function ProgressScreen() {
 
         {/* Workout Summary */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Træningsstatistik</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>📈 Træningsstatistik</Text>
           <View style={styles.workoutStatsGrid}>
             <View style={[styles.workoutStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
               <Ionicons name="calendar" size={24} color={theme.colors.primary} />
