@@ -537,7 +537,7 @@ export default function ProgressScreen() {
 
         {/* User Stats Summary */}
         <View style={[styles.statsSummary, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-          <Text style={[styles.statsSummaryTitle, { color: theme.colors.text }]}>📊 Din Statistik</Text>
+          <Text style={[styles.statsSummaryTitle, { color: theme.colors.text }]}>Din Statistik</Text>
           <View style={styles.statsSummaryGrid}>
             <View style={styles.statsSummaryItem}>
               <Text style={[styles.statsSummaryValue, { color: theme.colors.primary }]}>{userStats.totalWorkouts}</Text>
