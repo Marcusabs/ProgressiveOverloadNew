@@ -1954,53 +1954,55 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Opret Ny Øvelse</Text>
             
-            <TextInput
-              style={[styles.input, { 
-                backgroundColor: theme.colors.background, 
-                color: theme.colors.text,
-                borderColor: theme.colors.border 
-              }]}
-              placeholder="Øvelses navn"
-              placeholderTextColor={theme.colors.textSecondary}
-              value={createExerciseForm.name}
-              onChangeText={(text) => setCreateExerciseForm({ ...createExerciseForm, name: text })}
-            />
-            
-            <TextInput
-              style={[styles.textArea, { 
-                backgroundColor: theme.colors.background, 
-                color: theme.colors.text,
-                borderColor: theme.colors.border 
-              }]}
-              placeholder="Beskrivelse (valgfri)"
-              placeholderTextColor={theme.colors.textSecondary}
-              value={createExerciseForm.description}
-              onChangeText={(text) => setCreateExerciseForm({ ...createExerciseForm, description: text })}
-              multiline
-              numberOfLines={3}
-            />
-            
-            <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Muskelgruppe:</Text>
-            <View style={styles.muscleGroupGrid}>
-              {muscleGroups.map((muscleGroup) => (
-                <TouchableOpacity
-                  key={muscleGroup.id}
-                  style={[
-                    styles.muscleGroupOption,
-                    createExerciseForm.muscle_group_id === muscleGroup.id && styles.selectedMuscleGroup
-                  ]}
-                  onPress={() => setCreateExerciseForm({ ...createExerciseForm, muscle_group_id: muscleGroup.id })}
-                >
-                  <View style={[styles.muscleGroupColor, { backgroundColor: muscleGroup.color }]} />
-                  <Text style={[
-                    styles.muscleGroupOptionText,
-                    { color: createExerciseForm.muscle_group_id === muscleGroup.id ? '#FFFFFF' : theme.colors.text }
-                  ]}>
-                    {muscleGroup.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: theme.colors.background, 
+                  color: theme.colors.text,
+                  borderColor: theme.colors.border 
+                }]}
+                placeholder="Øvelses navn"
+                placeholderTextColor={theme.colors.textSecondary}
+                value={createExerciseForm.name}
+                onChangeText={(text) => setCreateExerciseForm({ ...createExerciseForm, name: text })}
+              />
+              
+              <TextInput
+                style={[styles.textArea, { 
+                  backgroundColor: theme.colors.background, 
+                  color: theme.colors.text,
+                  borderColor: theme.colors.border 
+                }]}
+                placeholder="Beskrivelse (valgfri)"
+                placeholderTextColor={theme.colors.textSecondary}
+                value={createExerciseForm.description}
+                onChangeText={(text) => setCreateExerciseForm({ ...createExerciseForm, description: text })}
+                multiline
+                numberOfLines={3}
+              />
+              
+              <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Muskelgruppe:</Text>
+              <View style={styles.muscleGroupGrid}>
+                {muscleGroups.map((muscleGroup) => (
+                  <TouchableOpacity
+                    key={muscleGroup.id}
+                    style={[
+                      styles.muscleGroupOption,
+                      createExerciseForm.muscle_group_id === muscleGroup.id && styles.selectedMuscleGroup
+                    ]}
+                    onPress={() => setCreateExerciseForm({ ...createExerciseForm, muscle_group_id: muscleGroup.id })}
+                  >
+                    <View style={[styles.muscleGroupColor, { backgroundColor: muscleGroup.color }]} />
+                    <Text style={[
+                      styles.muscleGroupOptionText,
+                      { color: createExerciseForm.muscle_group_id === muscleGroup.id ? '#FFFFFF' : theme.colors.text }
+                    ]}>
+                      {muscleGroup.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
             
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -2430,6 +2432,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     flex: 1,
+  },
+  modalScrollView: {
+    maxHeight: 400,
+    marginBottom: 20,
   },
   modalButtons: {
     flexDirection: 'row',
