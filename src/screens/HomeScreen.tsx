@@ -230,7 +230,7 @@ export default function HomeScreen() {
               </View>
             </View>
             <View style={styles.headerText}>
-              <Text style={styles.headerTitle}>💪 Progressive Overload 🏋️💪</Text>
+              <Text style={styles.headerTitle}>Progressive Overload</Text>
               <Text style={styles.headerSubtitle}>
                 {new Date().toLocaleDateString('da-DK', { 
                   weekday: 'long', 
@@ -289,7 +289,7 @@ export default function HomeScreen() {
 
         {/* Quick Stats */}
         <View style={styles.statsSection}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>📊 Din Statistik</Text>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Din Statistik</Text>
           <View style={styles.statsGrid}>
             <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
               <View style={[styles.statIconContainer, { backgroundColor: theme.colors.primary + '20' }]}>
