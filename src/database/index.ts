@@ -41,16 +41,19 @@ export const getDatabase = (): SQLite.SQLiteDatabase => {
 
 const insertDefaultMuscleGroups = async (db: SQLite.SQLiteDatabase) => {
   try {
+    console.log('🔍 Checking for existing muscle groups...');
     // Check if muscle groups already exist
     const existingGroups = await db.getAllAsync('SELECT COUNT(*) as count FROM muscle_groups');
     const count = (existingGroups[0] as any).count;
     
+    console.log(`📊 Found ${count} existing muscle groups`);
+    
     if (count > 0) {
-      console.log('Default muscle groups already exist, skipping...');
+      console.log('✅ Default muscle groups already exist, skipping...');
       return;
     }
 
-    console.log('Inserting default muscle groups...');
+    console.log('🚀 Inserting default muscle groups...');
     
     const defaultMuscleGroups = [
       { name: 'Bryst', color: '#FF6B6B', icon: 'fitness' },

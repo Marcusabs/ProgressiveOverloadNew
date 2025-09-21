@@ -79,10 +79,13 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
 
   loadMuscleGroups: async () => {
     try {
+      console.log('🔄 Loading muscle groups...');
       const db = getDatabase();
       const result = await db.getAllAsync(`
         SELECT * FROM muscle_groups ORDER BY name
       `);
+      
+      console.log(`📊 Found ${result.length} muscle groups in database`);
       
       const muscleGroups: MuscleGroup[] = result.map((row: any) => ({
         id: row.id,
@@ -92,9 +95,10 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         created_at: row.created_at
       }));
       
+      console.log('✅ Muscle groups loaded:', muscleGroups.map(g => g.name));
       set({ muscleGroups });
     } catch (error) {
-      console.error('Failed to load muscle groups:', error);
+      console.error('❌ Failed to load muscle groups:', error);
     }
   },
 
