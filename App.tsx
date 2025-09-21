@@ -16,19 +16,17 @@ export default function App() {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Initialize database only on mobile platforms
-        if (Platform.OS !== 'web') {
-          await initDatabase();
-          
-          // Load all data from stores
-          await Promise.all([
-            loadExercises(),
-            loadMuscleGroups(),
-            loadTrainingSessions(),
-            loadWorkouts(),
-            loadProgressData()
-          ]);
-        }
+        // Initialize database for all platforms
+        await initDatabase();
+        
+        // Load all data from stores
+        await Promise.all([
+          loadExercises(),
+          loadMuscleGroups(),
+          loadTrainingSessions(),
+          loadWorkouts(),
+          loadProgressData()
+        ]);
         
         setIsReady(true);
       } catch (error) {
@@ -43,9 +41,7 @@ export default function App() {
   if (!isReady) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>
-          {Platform.OS === 'web' ? 'Please use the mobile app for full functionality' : 'Loading...'}
-        </Text>
+        <Text style={styles.loadingText}>Loading...</Text>
         <StatusBar style="auto" />
       </View>
     );
