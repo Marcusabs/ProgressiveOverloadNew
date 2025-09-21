@@ -22,7 +22,7 @@
         "backgroundColor": "#FF6B35"
       },
       "edgeToEdgeEnabled": false,
-      "package": "prpdk.progressive.overload"
+      "package": "prpdk.progressive.overload.dev"
     },
     "web": {
       "favicon": "./assets/favicon.png",
