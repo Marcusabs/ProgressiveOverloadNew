@@ -406,7 +406,7 @@ export default function ProfileScreen() {
         {/* Training Statistics */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>📊 Træningsstatistikker</Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Træningsstatistikker</Text>
             <TouchableOpacity onPress={() => setShowStatsModal(true)}>
               <Ionicons name="stats-chart" size={20} color={theme.colors.primary} />
             </TouchableOpacity>
@@ -676,7 +676,7 @@ export default function ProfileScreen() {
         >
           <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
             <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>📊 Detaljerede Statistikker</Text>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Detaljerede Statistikker</Text>
               
               <View style={styles.statsModalContent}>
                 <View style={styles.statRow}>
