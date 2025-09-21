@@ -230,7 +230,7 @@ export default function HomeScreen() {
               </View>
             </View>
             <View style={styles.headerText}>
-              <Text style={styles.headerTitle}>💪 Progressive Overload 🏋️</Text>
+              <Text style={styles.headerTitle}>💪 Progressive Overload 🏋️💪</Text>
               <Text style={styles.headerSubtitle}>
                 {new Date().toLocaleDateString('da-DK', { 
                   weekday: 'long', 
