@@ -1,7 +1,7 @@
 name: EAS Update (OTA)
 on:
   push:
-    branches: [develop, preview]
+    branches: [main, develop, preview]
   pull_request:
     branches: [main]
 
@@ -38,7 +38,9 @@ jobs:
 
       - name: Publish OTA Update
         run: |
-          if [ "${{ github.ref }}" = "refs/heads/develop" ]; then
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            eas update --branch production --message "Update from main branch"
+          elif [ "${{ github.ref }}" = "refs/heads/develop" ]; then
             eas update --branch development --message "Update from develop branch"
           elif [ "${{ github.ref }}" = "refs/heads/preview" ]; then
             eas update --branch preview --message "Update from preview branch"
