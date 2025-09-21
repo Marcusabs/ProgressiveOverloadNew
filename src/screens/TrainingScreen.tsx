@@ -2353,6 +2353,7 @@ const styles = StyleSheet.create({
     width: '90%',
     maxWidth: 400,
     maxHeight: '80%',
+    flex: 1,
   },
   modalTitle: {
     fontSize: 18,
@@ -2434,7 +2435,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modalScrollView: {
-    maxHeight: 400,
+    flex: 1,
     marginBottom: 20,
   },
   modalButtons: {
