@@ -78,6 +78,21 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
   const [showSessionDetails, setShowSessionDetails] = useState(false);
   const [showEditSession, setShowEditSession] = useState(false);
   const [selectedSession, setSelectedSession] = useState<TrainingSession | null>(null);
+  
+  // Manual workout states
+  const [showManualWorkout, setShowManualWorkout] = useState(false);
+  const [manualWorkoutStep, setManualWorkoutStep] = useState<'setup' | 'training'>('setup');
+  const [manualWorkoutData, setManualWorkoutData] = useState({
+    sessionId: '',
+    sessionName: '',
+    date: new Date().toISOString().split('T')[0],
+    duration: '',
+    exercises: [] as Exercise[]
+  });
+  const [manualCurrentExerciseIndex, setManualCurrentExerciseIndex] = useState(0);
+  const [manualCurrentSet, setManualCurrentSet] = useState({ reps: '', weight: '' });
+  const [manualCompletedSets, setManualCompletedSets] = useState<Array<{reps: number, weight: number}>>([]);
+  const [manualAllExerciseSets, setManualAllExerciseSets] = useState<{[exerciseId: string]: Array<{reps: number, weight: number}>}>({});
   const [editSessionForm, setEditSessionForm] = useState({
     name: '',
     description: '',
@@ -592,13 +607,13 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
       const db = getDatabase();
       
       const previousWorkouts = await db.getAllAsync(`
-        SELECT w.*, we.exercise_id, s.reps, s.weight, s.completed
+        SELECT w.date, s.reps, s.weight
         FROM workouts w
         JOIN workout_exercises we ON w.id = we.workout_id
         JOIN sets s ON we.id = s.workout_exercise_id
         WHERE we.exercise_id = ? AND w.completed = 1 AND s.completed = 1
         ORDER BY w.date DESC
-        LIMIT 5
+        LIMIT 50
       `, [currentExercise.id]);
 
       if (previousWorkouts.length === 0) {
@@ -615,13 +630,22 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
         return;
       }
 
-      // Calculate suggestions based on previous performance
-      const lastWorkout = previousWorkouts[0];
-      const lastMaxWeight = Math.max(...previousWorkouts.slice(0, 1).map(w => w.weight));
-      const lastMaxReps = Math.max(...previousWorkouts.slice(0, 1).map(w => w.reps));
+      // Group sets by workout date and calculate metrics
+      const workoutsByDate = previousWorkouts.reduce((acc: any, curr: any) => {
+        const date = curr.date;
+        if (!acc[date]) acc[date] = [];
+        acc[date].push(curr);
+        return acc;
+      }, {});
+
+      const lastWorkoutDate = Object.keys(workoutsByDate)[0];
+      const lastWorkoutSets = workoutsByDate[lastWorkoutDate] || [];
       
-      const currentMaxWeight = Math.max(...completedSets.map(s => s.weight));
-      const currentMaxReps = Math.max(...completedSets.map(s => s.reps));
+      const lastMaxWeight = lastWorkoutSets.length > 0 ? Math.max(...lastWorkoutSets.map((s: any) => s.weight)) : 0;
+      const lastMaxReps = lastWorkoutSets.length > 0 ? Math.max(...lastWorkoutSets.map((s: any) => s.reps)) : 0;
+      
+      const currentMaxWeight = completedSets.length > 0 ? Math.max(...completedSets.map(s => s.weight)) : 0;
+      const currentMaxReps = completedSets.length > 0 ? Math.max(...completedSets.map(s => s.reps)) : 0;
 
       let suggestion;
       
@@ -906,11 +930,178 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
     }
   };
 
+  const handleStartManualWorkout = async () => {
+    if (!manualWorkoutData.sessionId) {
+      Alert.alert('Fejl', 'Vælg venligst en session');
+      return;
+    }
+
+    try {
+      // Load exercises for the session
+      await loadExercises();
+      const sessionExercises = getExercisesForSession(manualWorkoutData.sessionId);
+      
+      if (sessionExercises.length === 0) {
+        Alert.alert('Fejl', 'Ingen øvelser fundet i denne session');
+        return;
+      }
+
+      // Set up training data
+      setManualWorkoutData(prev => ({ ...prev, exercises: sessionExercises }));
+      setManualCurrentExerciseIndex(0);
+      setManualCompletedSets([]);
+      setManualAllExerciseSets({});
+      setManualWorkoutStep('training');
+    } catch (error) {
+      console.error('Error starting manual workout:', error);
+      Alert.alert('Fejl', 'Kunne ikke starte manuel træning');
+    }
+  };
+
+  const handleCompleteManualWorkout = async () => {
+    try {
+      // Create workout
+      const { addWorkout } = useExerciseStore.getState();
+      const workout = await addWorkout({
+        session_id: manualWorkoutData.sessionId,
+        name: `Manuel træning - ${manualWorkoutData.sessionName}`,
+        date: manualWorkoutData.date,
+        duration: parseInt(manualWorkoutData.duration) || 0,
+        completed: true,
+        notes: 'Manuel indtastning'
+      });
+
+      const db = (await import('../database')).getDatabase();
+
+      // Add exercises and sets
+      for (let i = 0; i < manualWorkoutData.exercises.length; i++) {
+        const exercise = manualWorkoutData.exercises[i];
+        const sets = manualAllExerciseSets[exercise.id] || [];
+        
+        if (sets.length > 0) {
+          // Create workout_exercise
+          const workoutExerciseId = `${workout.id}_${exercise.id}`;
+          await db.runAsync(`
+            INSERT INTO workout_exercises (id, workout_id, exercise_id, order_index, completed)
+            VALUES (?, ?, ?, ?, ?)
+          `, [workoutExerciseId, workout.id, exercise.id, i, 1]);
+
+          // Add sets
+          for (let j = 0; j < sets.length; j++) {
+            const set = sets[j];
+            const setId = `${workoutExerciseId}_${j + 1}`;
+            await db.runAsync(`
+              INSERT INTO sets (id, workout_exercise_id, reps, weight, completed, order_index)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `, [setId, workoutExerciseId, set.reps, set.weight, 1, j + 1]);
+          }
+        }
+      }
+
+      // Save progress data
+      const { saveWorkoutProgress } = useExerciseStore.getState();
+      await saveWorkoutProgress(workout.id);
+
+      Alert.alert('Succes', 'Manuel træning gemt!');
+      
+      // Reset everything
+      setShowManualWorkout(false);
+      setManualWorkoutStep('setup');
+      setManualWorkoutData({
+        sessionId: '',
+        sessionName: '',
+        date: new Date().toISOString().split('T')[0],
+        duration: '',
+        exercises: []
+      });
+      setManualCurrentExerciseIndex(0);
+      setManualCompletedSets([]);
+      setManualAllExerciseSets({});
+
+    } catch (error) {
+      console.error('Error completing manual workout:', error);
+      Alert.alert('Fejl', 'Kunne ikke gemme manuel træning');
+    }
+  };
+
+  const handleAddManualSet = () => {
+    const reps = parseInt(manualCurrentSet.reps);
+    const weight = parseFloat(manualCurrentSet.weight);
+
+    if (isNaN(reps) || isNaN(weight)) {
+      Alert.alert('Fejl', 'Indtast gyldige tal for reps og vægt');
+      return;
+    }
+
+    const currentExercise = manualWorkoutData.exercises[manualCurrentExerciseIndex];
+    const newSet = { reps, weight };
+    
+    // Add to current exercise sets
+    const newCompletedSets = [...manualCompletedSets, newSet];
+    setManualCompletedSets(newCompletedSets);
+    
+    // Add to all exercise sets
+    setManualAllExerciseSets(prev => ({
+      ...prev,
+      [currentExercise.id]: newCompletedSets
+    }));
+    
+    // Clear form
+    setManualCurrentSet({ reps: '', weight: '' });
+  };
+
+  const handleNextManualExercise = () => {
+    if (manualCurrentExerciseIndex < manualWorkoutData.exercises.length - 1) {
+      // Save current exercise sets
+      const currentExercise = manualWorkoutData.exercises[manualCurrentExerciseIndex];
+      setManualAllExerciseSets(prev => ({
+        ...prev,
+        [currentExercise.id]: manualCompletedSets
+      }));
+      
+      // Move to next exercise
+      setManualCurrentExerciseIndex(prev => prev + 1);
+      const nextExercise = manualWorkoutData.exercises[manualCurrentExerciseIndex + 1];
+      setManualCompletedSets(manualAllExerciseSets[nextExercise.id] || []);
+    }
+  };
+
+  const handlePrevManualExercise = () => {
+    if (manualCurrentExerciseIndex > 0) {
+      // Save current exercise sets
+      const currentExercise = manualWorkoutData.exercises[manualCurrentExerciseIndex];
+      setManualAllExerciseSets(prev => ({
+        ...prev,
+        [currentExercise.id]: manualCompletedSets
+      }));
+      
+      // Move to previous exercise
+      setManualCurrentExerciseIndex(prev => prev - 1);
+      const prevExercise = manualWorkoutData.exercises[manualCurrentExerciseIndex - 1];
+      setManualCompletedSets(manualAllExerciseSets[prevExercise.id] || []);
+    }
+  };
+
   const renderSessionsTab = () => (
     <View style={styles.tabContent}>
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Træningssessioner</Text>
         <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>Vælg en session for at starte træning</Text>
+        
+        {/* Manual Workout Button */}
+        <TouchableOpacity
+          style={[styles.manualWorkoutButton, { backgroundColor: theme.colors.secondary }]}
+          onPress={async () => {
+            console.log('🔄 Manual workout button pressed');
+            console.log('📊 Current trainingSessions:', trainingSessions);
+            await loadTrainingSessions(); // Ensure sessions are loaded
+            console.log('📊 trainingSessions after reload:', trainingSessions);
+            setShowManualWorkout(true);
+          }}
+        >
+          <Ionicons name="add-circle" size={20} color="#fff" />
+          <Text style={styles.manualWorkoutButtonText}>Tilføj Træning Manuelt</Text>
+        </TouchableOpacity>
       </View>
 
       {trainingSessions && trainingSessions.length > 0 ? trainingSessions.map((session) => (
@@ -2127,6 +2318,224 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
           </View>
         </View>
       </Modal>
+
+      {/* Manual Workout Modal */}
+      <Modal
+        visible={showManualWorkout}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowManualWorkout(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
+          <View style={[styles.manualWorkoutModal, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Tilføj Manuel Træning</Text>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => setShowManualWorkout(false)}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            {manualWorkoutStep === 'setup' ? (
+              /* Setup Phase */
+              <ScrollView style={styles.modalContent}>
+                {/* Session Selector */}
+                <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Vælg Session:</Text>
+                {trainingSessions && trainingSessions.length > 0 ? (
+                  <View style={styles.sessionSelectorContainer}>
+                    <ScrollView 
+                      horizontal 
+                      showsHorizontalScrollIndicator={false} 
+                      style={styles.sessionSelector}
+                      contentContainerStyle={styles.sessionSelectorContent}
+                    >
+                      {trainingSessions.map((session) => (
+                        <TouchableOpacity
+                          key={session.id}
+                          style={[
+                            styles.sessionSelectorItem,
+                            { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                            manualWorkoutData.sessionId === session.id && { 
+                              backgroundColor: theme.colors.primary,
+                              borderColor: theme.colors.primary
+                            }
+                          ]}
+                          onPress={() => setManualWorkoutData({ 
+                            ...manualWorkoutData, 
+                            sessionId: session.id, 
+                            sessionName: session.name 
+                          })}
+                        >
+                          <Text 
+                            style={[
+                              styles.sessionSelectorText,
+                              { color: theme.colors.text },
+                              manualWorkoutData.sessionId === session.id && { color: '#fff', fontWeight: 'bold' }
+                            ]}
+                            numberOfLines={2}
+                            ellipsizeMode="tail"
+                          >
+                            {session.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                ) : (
+                  <View style={[styles.noSessionsContainer, { backgroundColor: theme.colors.card }]}>
+                    <Ionicons name="warning" size={24} color={theme.colors.textSecondary} />
+                    <Text style={[styles.noSessionsText, { color: theme.colors.textSecondary }]}>
+                      Ingen sessioner fundet
+                    </Text>
+                    <Text style={[styles.noSessionsSubtext, { color: theme.colors.textTertiary }]}>
+                      Opret først en session under "Opretter" tab
+                    </Text>
+                  </View>
+                )}
+
+                {/* Date Picker */}
+                <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Dato (YYYY-MM-DD):</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.colors.card, color: theme.colors.text, borderColor: theme.colors.border }]}
+                  value={manualWorkoutData.date}
+                  onChangeText={(text) => setManualWorkoutData({ ...manualWorkoutData, date: text })}
+                  placeholder="2024-01-15"
+                  placeholderTextColor={theme.colors.textTertiary}
+                />
+
+                {/* Duration */}
+                <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Varighed (minutter):</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: theme.colors.card, color: theme.colors.text, borderColor: theme.colors.border }]}
+                  value={manualWorkoutData.duration}
+                  onChangeText={(text) => setManualWorkoutData({ ...manualWorkoutData, duration: text })}
+                  placeholder="60"
+                  placeholderTextColor={theme.colors.textTertiary}
+                  keyboardType="numeric"
+                />
+              </ScrollView>
+            ) : (
+              /* Training Phase */
+              <ScrollView style={styles.modalContent}>
+                {/* Exercise Header */}
+                <View style={styles.exerciseHeader}>
+                  <Text style={[styles.exerciseNumber, { color: theme.colors.primary }]}>
+                    Øvelse {manualCurrentExerciseIndex + 1} af {manualWorkoutData.exercises.length}
+                  </Text>
+                  <Text style={[styles.exerciseName, { color: theme.colors.text }]}>
+                    {manualWorkoutData.exercises[manualCurrentExerciseIndex]?.name}
+                  </Text>
+                </View>
+
+                {/* Current Sets */}
+                <View style={styles.setsContainer}>
+                  <Text style={[styles.setsTitle, { color: theme.colors.text }]}>Sets:</Text>
+                  {manualCompletedSets.map((set, index) => (
+                    <View key={index} style={[styles.setRow, { backgroundColor: theme.colors.card }]}>
+                      <Text style={[styles.setNumber, { color: theme.colors.textSecondary }]}>{index + 1}</Text>
+                      <Text style={[styles.setData, { color: theme.colors.text }]}>{set.weight} kg × {set.reps} reps</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Add Set Form */}
+                <View style={styles.addSetForm}>
+                  <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Tilføj Set:</Text>
+                  <View style={styles.setInputRow}>
+                    <View style={styles.setInputContainer}>
+                      <Text style={[styles.setInputLabel, { color: theme.colors.textSecondary }]}>Vægt (kg)</Text>
+                      <TextInput
+                        style={[styles.setInput, { backgroundColor: theme.colors.card, color: theme.colors.text }]}
+                        value={manualCurrentSet.weight}
+                        onChangeText={(text) => setManualCurrentSet({ ...manualCurrentSet, weight: text })}
+                        placeholder="0"
+                        keyboardType="numeric"
+                        placeholderTextColor={theme.colors.textTertiary}
+                      />
+                    </View>
+                    <View style={styles.setInputContainer}>
+                      <Text style={[styles.setInputLabel, { color: theme.colors.textSecondary }]}>Reps</Text>
+                      <TextInput
+                        style={[styles.setInput, { backgroundColor: theme.colors.card, color: theme.colors.text }]}
+                        value={manualCurrentSet.reps}
+                        onChangeText={(text) => setManualCurrentSet({ ...manualCurrentSet, reps: text })}
+                        placeholder="0"
+                        keyboardType="numeric"
+                        placeholderTextColor={theme.colors.textTertiary}
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.addSetButton, { backgroundColor: theme.colors.primary }]}
+                      onPress={handleAddManualSet}
+                    >
+                      <Ionicons name="add" size={20} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Exercise Navigation */}
+                <View style={styles.exerciseNavigation}>
+                  <TouchableOpacity
+                    style={[
+                      styles.navButton,
+                      { backgroundColor: theme.colors.border },
+                      manualCurrentExerciseIndex === 0 && styles.navButtonDisabled
+                    ]}
+                    onPress={handlePrevManualExercise}
+                    disabled={manualCurrentExerciseIndex === 0}
+                  >
+                    <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
+                    <Text style={[styles.navButtonText, { color: theme.colors.text }]}>Forrige</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.navButton,
+                      { backgroundColor: theme.colors.primary },
+                      manualCurrentExerciseIndex === manualWorkoutData.exercises.length - 1 && styles.navButtonDisabled
+                    ]}
+                    onPress={handleNextManualExercise}
+                    disabled={manualCurrentExerciseIndex === manualWorkoutData.exercises.length - 1}
+                  >
+                    <Text style={[styles.navButtonText, { color: '#fff' }]}>Næste</Text>
+                    <Ionicons name="chevron-forward" size={20} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton, { backgroundColor: theme.colors.border }]}
+                onPress={() => {
+                  setShowManualWorkout(false);
+                  setManualWorkoutStep('setup');
+                }}
+              >
+                <Text style={[styles.cancelButtonText, { color: theme.colors.text }]}>Annuller</Text>
+              </TouchableOpacity>
+              
+              {manualWorkoutStep === 'setup' ? (
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.confirmButton, { backgroundColor: theme.colors.primary }]}
+                  onPress={handleStartManualWorkout}
+                >
+                  <Text style={styles.confirmButtonText}>Start Træning</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.confirmButton, { backgroundColor: theme.colors.success }]}
+                  onPress={handleCompleteManualWorkout}
+                >
+                  <Text style={styles.confirmButtonText}>Afslut Træning</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -3154,6 +3563,173 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   customTimerButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Manual Workout Styles
+  manualWorkoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  manualWorkoutButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  manualWorkoutModal: {
+    borderRadius: 12,
+    padding: 20,
+    width: '95%',
+    maxWidth: 500,
+    maxHeight: '90%',
+  },
+  sessionSelectorContainer: {
+    marginBottom: 20,
+  },
+  sessionSelector: {
+    maxHeight: 80,
+  },
+  sessionSelectorContent: {
+    paddingHorizontal: 4,
+    alignItems: 'center',
+  },
+  sessionSelectorItem: {
+    padding: 12,
+    borderRadius: 8,
+    marginRight: 10,
+    minWidth: 120,
+    maxWidth: 180,
+    minHeight: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+  },
+  sessionSelectorText: {
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+    flexShrink: 1,
+    lineHeight: 16,
+  },
+  instructionText: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 20,
+    fontStyle: 'italic',
+  },
+  noSessionsContainer: {
+    padding: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  noSessionsText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  noSessionsSubtext: {
+    fontSize: 14,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  // Manual Training Styles
+  exerciseHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  exerciseNumber: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 5,
+  },
+  exerciseName: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  setsContainer: {
+    marginBottom: 20,
+  },
+  setsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  setRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  setNumber: {
+    fontSize: 16,
+    fontWeight: '600',
+    width: 30,
+  },
+  setData: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
+  },
+  addSetForm: {
+    marginBottom: 20,
+  },
+  setInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+  },
+  setInputContainer: {
+    flex: 1,
+  },
+  setInputLabel: {
+    fontSize: 14,
+    marginBottom: 5,
+  },
+  setInput: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  addSetButton: {
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 50,
+  },
+  exerciseNavigation: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  navButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    flex: 1,
+    justifyContent: 'center',
+    gap: 5,
+  },
+  navButtonDisabled: {
+    opacity: 0.5,
+  },
+  navButtonText: {
     fontSize: 16,
     fontWeight: '600',
   },
