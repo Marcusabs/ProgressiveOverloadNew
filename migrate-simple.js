@@ -34,8 +34,7 @@ async function migrateData() {
       { name: 'Biceps', color: '#96CEB4' },
       { name: 'Triceps', color: '#FFEAA7' },
       { name: 'Mave', color: '#DDA0DD' },
-      { name: 'Ben', color: '#98D8C8' },
-      { name: 'Glutes', color: '#F7DC6F' }
+      { name: 'Ben', color: '#98D8C8' }
     ];
 
     for (const muscleGroup of defaultMuscleGroups) {
