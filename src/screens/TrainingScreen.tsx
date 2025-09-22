@@ -2327,36 +2327,37 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
         onRequestClose={() => setShowManualWorkout(false)}
       >
         <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
-          <View style={[styles.manualWorkoutModal, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Tilføj Manuel Træning</Text>
+          <View style={[styles.liveTrainingModal, { backgroundColor: theme.colors.surface }]}>
+            {/* Training Header */}
+            <View style={styles.trainingHeader}>
+              <Text style={[styles.trainingTitle, { color: theme.colors.text }]}>
+                Manuel Træning
+              </Text>
               <TouchableOpacity
-                style={styles.backButton}
-                onPress={() => setShowManualWorkout(false)}
+                style={styles.endTrainingButton}
+                onPress={() => {
+                  setShowManualWorkout(false);
+                  setManualWorkoutStep('setup');
+                }}
               >
-                <Ionicons name="close" size={24} color={theme.colors.primary} />
+                <Ionicons name="close" size={24} color="#fff" />
               </TouchableOpacity>
             </View>
 
             {manualWorkoutStep === 'setup' ? (
-              /* Setup Phase */
-              <ScrollView style={styles.modalContent}>
-                {/* Session Selector */}
-                <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Vælg Session:</Text>
-                {trainingSessions && trainingSessions.length > 0 ? (
-                  <View style={styles.sessionSelectorContainer}>
-                    <ScrollView 
-                      horizontal 
-                      showsHorizontalScrollIndicator={false} 
-                      style={styles.sessionSelector}
-                      contentContainerStyle={styles.sessionSelectorContent}
-                    >
+              /* Setup Phase - Simple Session Selection */
+              <ScrollView style={styles.trainingContent}>
+                <View style={styles.setupContainer}>
+                  <Text style={[styles.setupTitle, { color: theme.colors.text }]}>Vælg Session</Text>
+                  
+                  {trainingSessions && trainingSessions.length > 0 ? (
+                    <View style={styles.sessionList}>
                       {trainingSessions.map((session) => (
                         <TouchableOpacity
                           key={session.id}
                           style={[
-                            styles.sessionSelectorItem,
-                            { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+                            styles.sessionOptionCard,
+                            { backgroundColor: theme.colors.card },
                             manualWorkoutData.sessionId === session.id && { 
                               backgroundColor: theme.colors.primary,
                               borderColor: theme.colors.primary
@@ -2368,86 +2369,96 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                             sessionName: session.name 
                           })}
                         >
-                          <Text 
-                            style={[
-                              styles.sessionSelectorText,
-                              { color: theme.colors.text },
-                              manualWorkoutData.sessionId === session.id && { color: '#fff', fontWeight: 'bold' }
-                            ]}
-                            numberOfLines={2}
-                            ellipsizeMode="tail"
-                          >
+                          <Text style={[
+                            styles.sessionOptionText,
+                            { color: theme.colors.text },
+                            manualWorkoutData.sessionId === session.id && { color: '#fff', fontWeight: 'bold' }
+                          ]}>
                             {session.name}
                           </Text>
                         </TouchableOpacity>
                       ))}
-                    </ScrollView>
-                  </View>
-                ) : (
-                  <View style={[styles.noSessionsContainer, { backgroundColor: theme.colors.card }]}>
-                    <Ionicons name="warning" size={24} color={theme.colors.textSecondary} />
+                    </View>
+                  ) : (
                     <Text style={[styles.noSessionsText, { color: theme.colors.textSecondary }]}>
-                      Ingen sessioner fundet
+                      Ingen sessioner tilgængelige. Opret en session i "Opretter" tab.
                     </Text>
-                    <Text style={[styles.noSessionsSubtext, { color: theme.colors.textTertiary }]}>
-                      Opret først en session under "Opretter" tab
-                    </Text>
+                  )}
+
+                  {/* Date and Duration */}
+                  <View style={styles.setupInputs}>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Dato:</Text>
+                      <TextInput
+                        style={[styles.setupInput, { backgroundColor: theme.colors.card, color: theme.colors.text }]}
+                        value={manualWorkoutData.date}
+                        onChangeText={(text) => setManualWorkoutData({ ...manualWorkoutData, date: text })}
+                        placeholder="2024-01-15"
+                        placeholderTextColor={theme.colors.textTertiary}
+                      />
+                    </View>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Varighed (min):</Text>
+                      <TextInput
+                        style={[styles.setupInput, { backgroundColor: theme.colors.card, color: theme.colors.text }]}
+                        value={manualWorkoutData.duration}
+                        onChangeText={(text) => setManualWorkoutData({ ...manualWorkoutData, duration: text })}
+                        placeholder="60"
+                        placeholderTextColor={theme.colors.textTertiary}
+                        keyboardType="numeric"
+                      />
+                    </View>
                   </View>
-                )}
 
-                {/* Date Picker */}
-                <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Dato (YYYY-MM-DD):</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: theme.colors.card, color: theme.colors.text, borderColor: theme.colors.border }]}
-                  value={manualWorkoutData.date}
-                  onChangeText={(text) => setManualWorkoutData({ ...manualWorkoutData, date: text })}
-                  placeholder="2024-01-15"
-                  placeholderTextColor={theme.colors.textTertiary}
-                />
-
-                {/* Duration */}
-                <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Varighed (minutter):</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: theme.colors.card, color: theme.colors.text, borderColor: theme.colors.border }]}
-                  value={manualWorkoutData.duration}
-                  onChangeText={(text) => setManualWorkoutData({ ...manualWorkoutData, duration: text })}
-                  placeholder="60"
-                  placeholderTextColor={theme.colors.textTertiary}
-                  keyboardType="numeric"
-                />
+                  <TouchableOpacity
+                    style={[styles.startTrainingButton, { backgroundColor: theme.colors.primary }]}
+                    onPress={handleStartManualWorkout}
+                  >
+                    <Text style={styles.startTrainingButtonText}>Start Manuel Træning</Text>
+                  </TouchableOpacity>
+                </View>
               </ScrollView>
             ) : (
-              /* Training Phase */
-              <ScrollView style={styles.modalContent}>
-                {/* Exercise Header */}
-                <View style={styles.exerciseHeader}>
-                  <Text style={[styles.exerciseNumber, { color: theme.colors.primary }]}>
+              /* Training Phase - Exact copy of live training but without timer */
+              <ScrollView style={styles.trainingContent}>
+                {/* Current Exercise Info */}
+                <View style={styles.currentExerciseSection}>
+                  <Text style={[styles.exerciseCounter, { color: theme.colors.primary }]}>
                     Øvelse {manualCurrentExerciseIndex + 1} af {manualWorkoutData.exercises.length}
                   </Text>
-                  <Text style={[styles.exerciseName, { color: theme.colors.text }]}>
+                  <Text style={[styles.currentExerciseName, { color: theme.colors.text }]}>
                     {manualWorkoutData.exercises[manualCurrentExerciseIndex]?.name}
                   </Text>
                 </View>
 
-                {/* Current Sets */}
-                <View style={styles.setsContainer}>
-                  <Text style={[styles.setsTitle, { color: theme.colors.text }]}>Sets:</Text>
+                {/* Completed Sets */}
+                <View style={styles.completedSetsSection}>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                    Fuldførte Sæt ({manualCompletedSets.length})
+                  </Text>
                   {manualCompletedSets.map((set, index) => (
-                    <View key={index} style={[styles.setRow, { backgroundColor: theme.colors.card }]}>
-                      <Text style={[styles.setNumber, { color: theme.colors.textSecondary }]}>{index + 1}</Text>
-                      <Text style={[styles.setData, { color: theme.colors.text }]}>{set.weight} kg × {set.reps} reps</Text>
+                    <View key={index} style={[styles.completedSet, { backgroundColor: theme.colors.card }]}>
+                      <Text style={[styles.setNumber, { color: theme.colors.textSecondary }]}>#{index + 1}</Text>
+                      <Text style={[styles.setData, { color: theme.colors.text }]}>
+                        {set.weight} kg × {set.reps} reps
+                      </Text>
                     </View>
                   ))}
+                  {manualCompletedSets.length === 0 && (
+                    <Text style={[styles.noSetsText, { color: theme.colors.textTertiary }]}>
+                      Ingen sæt endnu
+                    </Text>
+                  )}
                 </View>
 
-                {/* Add Set Form */}
-                <View style={styles.addSetForm}>
-                  <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Tilføj Set:</Text>
-                  <View style={styles.setInputRow}>
-                    <View style={styles.setInputContainer}>
+                {/* Add New Set */}
+                <View style={styles.addSetSection}>
+                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Tilføj Nyt Sæt</Text>
+                  <View style={styles.setInputsRow}>
+                    <View style={styles.setInputGroup}>
                       <Text style={[styles.setInputLabel, { color: theme.colors.textSecondary }]}>Vægt (kg)</Text>
                       <TextInput
-                        style={[styles.setInput, { backgroundColor: theme.colors.card, color: theme.colors.text }]}
+                        style={[styles.setInputField, { backgroundColor: theme.colors.background, color: theme.colors.text }]}
                         value={manualCurrentSet.weight}
                         onChangeText={(text) => setManualCurrentSet({ ...manualCurrentSet, weight: text })}
                         placeholder="0"
@@ -2455,10 +2466,10 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                         placeholderTextColor={theme.colors.textTertiary}
                       />
                     </View>
-                    <View style={styles.setInputContainer}>
+                    <View style={styles.setInputGroup}>
                       <Text style={[styles.setInputLabel, { color: theme.colors.textSecondary }]}>Reps</Text>
                       <TextInput
-                        style={[styles.setInput, { backgroundColor: theme.colors.card, color: theme.colors.text }]}
+                        style={[styles.setInputField, { backgroundColor: theme.colors.background, color: theme.colors.text }]}
                         value={manualCurrentSet.reps}
                         onChangeText={(text) => setManualCurrentSet({ ...manualCurrentSet, reps: text })}
                         placeholder="0"
@@ -2470,7 +2481,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                       style={[styles.addSetButton, { backgroundColor: theme.colors.primary }]}
                       onPress={handleAddManualSet}
                     >
-                      <Ionicons name="add" size={20} color="#fff" />
+                      <Ionicons name="add" size={24} color="#fff" />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -2481,7 +2492,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                     style={[
                       styles.navButton,
                       { backgroundColor: theme.colors.border },
-                      manualCurrentExerciseIndex === 0 && styles.navButtonDisabled
+                      manualCurrentExerciseIndex === 0 && { opacity: 0.5 }
                     ]}
                     onPress={handlePrevManualExercise}
                     disabled={manualCurrentExerciseIndex === 0}
@@ -2494,7 +2505,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                     style={[
                       styles.navButton,
                       { backgroundColor: theme.colors.primary },
-                      manualCurrentExerciseIndex === manualWorkoutData.exercises.length - 1 && styles.navButtonDisabled
+                      manualCurrentExerciseIndex === manualWorkoutData.exercises.length - 1 && { opacity: 0.5 }
                     ]}
                     onPress={handleNextManualExercise}
                     disabled={manualCurrentExerciseIndex === manualWorkoutData.exercises.length - 1}
@@ -2503,36 +2514,16 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                     <Ionicons name="chevron-forward" size={20} color="#fff" />
                   </TouchableOpacity>
                 </View>
-              </ScrollView>
-            )}
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton, { backgroundColor: theme.colors.border }]}
-                onPress={() => {
-                  setShowManualWorkout(false);
-                  setManualWorkoutStep('setup');
-                }}
-              >
-                <Text style={[styles.cancelButtonText, { color: theme.colors.text }]}>Annuller</Text>
-              </TouchableOpacity>
-              
-              {manualWorkoutStep === 'setup' ? (
+                {/* Complete Workout Button */}
                 <TouchableOpacity
-                  style={[styles.modalButton, styles.confirmButton, { backgroundColor: theme.colors.primary }]}
-                  onPress={handleStartManualWorkout}
-                >
-                  <Text style={styles.confirmButtonText}>Start Træning</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.confirmButton, { backgroundColor: theme.colors.success }]}
+                  style={[styles.completeWorkoutButton, { backgroundColor: theme.colors.success }]}
                   onPress={handleCompleteManualWorkout}
                 >
-                  <Text style={styles.confirmButtonText}>Afslut Træning</Text>
+                  <Text style={styles.completeWorkoutButtonText}>Afslut Manuel Træning</Text>
                 </TouchableOpacity>
-              )}
-            </View>
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -3639,98 +3630,64 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
-  // Manual Training Styles
-  exerciseHeader: {
-    alignItems: 'center',
-    marginBottom: 20,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+  // Manual Training Setup Styles
+  setupContainer: {
+    padding: 20,
   },
-  exerciseNumber: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 5,
-  },
-  exerciseName: {
-    fontSize: 22,
+  setupTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
     textAlign: 'center',
+    marginBottom: 30,
   },
-  setsContainer: {
-    marginBottom: 20,
+  sessionList: {
+    marginBottom: 30,
   },
-  setsTitle: {
-    fontSize: 16,
+  sessionOptionCard: {
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 15,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  sessionOptionText: {
+    fontSize: 18,
     fontWeight: '600',
-    marginBottom: 10,
-  },
-  setRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  setNumber: {
-    fontSize: 16,
-    fontWeight: '600',
-    width: 30,
-  },
-  setData: {
-    fontSize: 16,
-    fontWeight: '500',
-    flex: 1,
-  },
-  addSetForm: {
-    marginBottom: 20,
-  },
-  setInputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 10,
-  },
-  setInputContainer: {
-    flex: 1,
-  },
-  setInputLabel: {
-    fontSize: 14,
-    marginBottom: 5,
-  },
-  setInput: {
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    fontSize: 16,
     textAlign: 'center',
   },
-  addSetButton: {
-    padding: 12,
+  setupInputs: {
+    marginBottom: 30,
+  },
+  inputGroup: {
+    marginBottom: 15,
+  },
+  setupInput: {
+    padding: 15,
     borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 50,
-  },
-  exerciseNavigation: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  navButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    flex: 1,
-    justifyContent: 'center',
-    gap: 5,
-  },
-  navButtonDisabled: {
-    opacity: 0.5,
-  },
-  navButtonText: {
     fontSize: 16,
-    fontWeight: '600',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  startTrainingButton: {
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  startTrainingButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  completeWorkoutButton: {
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 20,
+  },
+  completeWorkoutButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });
