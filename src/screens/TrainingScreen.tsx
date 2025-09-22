@@ -618,16 +618,8 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
       `, [currentExercise.id]);
 
       if (previousWorkouts.length === 0) {
-        // First time doing this exercise
-        setProgressiveOverloadSuggestions([{
-          exerciseId: currentExercise.id,
-          exerciseName: currentExercise.name,
-          currentMaxWeight: 0,
-          suggestedWeight: 20,
-          suggestedReps: 8,
-          reason: 'Første gang du laver denne øvelse. Start med moderat vægt.',
-          type: 'weight'
-        }]);
+        // First time doing this exercise - no suggestions
+        setProgressiveOverloadSuggestions([]);
         return;
       }
 
