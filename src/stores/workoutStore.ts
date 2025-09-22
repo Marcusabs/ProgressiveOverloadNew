@@ -4,7 +4,7 @@ import { getDatabase } from '../database';
 import { calculateProgressiveOverload, analyzeWorkout, generateWorkoutSummary, ProgressiveOverloadSuggestion, WorkoutAnalysis } from '../utils/progressiveOverload';
 import { useProgressStore } from './progressStore';
 
-interface WorkoutState {
+export interface WorkoutState {
   currentWorkout: Workout | null;
   workoutTemplates: WorkoutTemplate[];
   isLoading: boolean;

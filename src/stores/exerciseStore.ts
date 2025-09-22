@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { Exercise, MuscleGroup, TrainingSession, Workout, ExerciseInWorkout, Set, ProgressData, ProgressiveOverloadSuggestion } from '../types';
 import { getDatabase } from '../database';
 
-interface ExerciseState {
+export interface ExerciseState {
   exercises: Exercise[];
   muscleGroups: MuscleGroup[];
   trainingSessions: TrainingSession[];

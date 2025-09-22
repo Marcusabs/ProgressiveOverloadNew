@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { ProgressData, Workout, ExerciseInWorkout } from '../types';
 import { getDatabase } from '../database';
 
-interface ProgressState {
+export interface ProgressState {
   progressData: ProgressData[];
   isLoading: boolean;
   
