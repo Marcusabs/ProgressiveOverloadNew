@@ -30,9 +30,14 @@ export default function SessionBuilderScreen() {
   
   const [selectedSession, setSelectedSession] = useState<TrainingSession | null>(null);
   const [showSessionModal, setShowSessionModal] = useState(false);
+  const [showEditSession, setShowEditSession] = useState(false);
   const [sessionName, setSessionName] = useState('');
   const [sessionDescription, setSessionDescription] = useState('');
   const [selectedMuscleGroups, setSelectedMuscleGroups] = useState<string[]>([]);
+  const [editSessionForm, setEditSessionForm] = useState({
+    name: '',
+    description: ''
+  });
 
   useEffect(() => {
     loadTrainingSessions();
@@ -86,6 +91,62 @@ export default function SessionBuilderScreen() {
     );
   };
 
+  const handleEditSession = (session: TrainingSession) => {
+    setSelectedSession(session);
+    setEditSessionForm({
+      name: session.name,
+      description: session.description || ''
+    });
+    setShowEditSession(true);
+  };
+
+  const handleSaveSession = async () => {
+    if (!selectedSession || !editSessionForm.name.trim()) {
+      Alert.alert('Fejl', 'Session navn er påkrævet');
+      return;
+    }
+
+    try {
+      await updateTrainingSession(selectedSession.id, {
+        name: editSessionForm.name,
+        description: editSessionForm.description
+      });
+      
+      Alert.alert('Succes', 'Session opdateret!');
+      loadTrainingSessions();
+      setShowEditSession(false);
+      setSelectedSession(null);
+    } catch (error) {
+      Alert.alert('Fejl', 'Kunne ikke opdatere session');
+    }
+  };
+
+  const handleDeleteSession = (sessionId: string) => {
+    const session = trainingSessions.find(s => s.id === sessionId);
+    const sessionName = session?.name || 'denne session';
+    
+    Alert.alert(
+      'Slet session',
+      `Er du sikker på at du vil slette ${sessionName}?`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        { 
+          text: 'Slet', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteTrainingSession(sessionId);
+              Alert.alert('Succes', 'Session slettet!');
+              loadTrainingSessions();
+            } catch (error) {
+              Alert.alert('Fejl', 'Kunne ikke slette session');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <ScrollView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#007AFF" />
@@ -119,6 +180,20 @@ export default function SessionBuilderScreen() {
               <View style={styles.sessionInfo}>
                 <Text style={styles.sessionName}>{session.name}</Text>
                 <Text style={styles.sessionDescription}>{session.description}</Text>
+              </View>
+              <View style={styles.sessionActions}>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => handleEditSession(session)}
+                >
+                  <Ionicons name="pencil" size={20} color="#007AFF" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => handleDeleteSession(session.id)}
+                >
+                  <Ionicons name="trash" size={20} color="#FF6B6B" />
+                </TouchableOpacity>
               </View>
             </View>
             
@@ -214,6 +289,49 @@ export default function SessionBuilderScreen() {
           </View>
         </View>
       )}
+
+      {/* Edit Session Modal */}
+      {showEditSession && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Rediger Session</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Session navn"
+              value={editSessionForm.name}
+              onChangeText={(text) => setEditSessionForm({ ...editSessionForm, name: text })}
+            />
+            
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Beskrivelse (valgfri)"
+              value={editSessionForm.description}
+              onChangeText={(text) => setEditSessionForm({ ...editSessionForm, description: text })}
+              multiline
+              numberOfLines={3}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  setShowEditSession(false);
+                  setSelectedSession(null);
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Annuller</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.confirmButton]}
+                onPress={handleSaveSession}
+              >
+                <Text style={styles.confirmButtonText}>Gem Ændringer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -286,6 +404,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 15,
+  },
+  sessionActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionButton: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: '#f0f0f0',
   },
   muscleGroupIndicator: {
     width: 12,

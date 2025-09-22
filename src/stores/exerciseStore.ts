@@ -291,6 +291,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
 
   updateTrainingSession: async (id, updates) => {
     try {
+      console.log('🔄 Updating training session:', id, updates);
       const db = getDatabase();
       
       const updateFields = [];
@@ -313,20 +314,29 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         updateValues.push(updates.muscle_group_id);
       }
 
+      console.log('📝 Update fields:', updateFields);
+      console.log('📝 Update values:', updateValues);
+
       if (updateFields.length > 0) {
         updateValues.push(id);
-        await db.runAsync(`
-          UPDATE training_sessions SET ${updateFields.join(', ')} WHERE id = ?
-        `, updateValues);
+        const query = `UPDATE training_sessions SET ${updateFields.join(', ')} WHERE id = ?`;
+        console.log('🔍 Executing query:', query);
+        
+        await db.runAsync(query, updateValues);
+        console.log('✅ Database updated successfully');
 
         set(state => ({
           trainingSessions: state.trainingSessions.map(session =>
             session.id === id ? { ...session, ...updates } : session
           )
         }));
+        console.log('✅ State updated successfully');
+      } else {
+        console.log('⚠️ No fields to update');
       }
     } catch (error) {
-      console.error('Failed to update training session:', error);
+      console.error('❌ Failed to update training session:', error);
+      throw error;
     }
   },
 

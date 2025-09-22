@@ -80,7 +80,9 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
   const [selectedSession, setSelectedSession] = useState<TrainingSession | null>(null);
   const [editSessionForm, setEditSessionForm] = useState({
     name: '',
-    description: ''
+    description: '',
+    muscleGroupId: '',
+    selectedExercises: [] as Exercise[]
   });
   
   // Exercise creation states
@@ -739,33 +741,86 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
   };
 
   const handleEditSession = (session: TrainingSession) => {
+    console.log('🔧 Editing session:', session);
     setSelectedSession(session);
+    
+    // Get exercises for this session's muscle group
+    const sessionExercises = exercises.filter(ex => ex.muscle_group_id === session.muscle_group_id);
+    
     setEditSessionForm({
       name: session.name,
-      description: session.description || ''
+      description: session.description || '',
+      muscleGroupId: session.muscle_group_id,
+      selectedExercises: sessionExercises
     });
     setShowEditSession(true);
   };
 
   const handleSaveSession = async () => {
+    console.log('💾 Saving session:', selectedSession?.id, editSessionForm);
+    
     if (!selectedSession || !editSessionForm.name.trim()) {
       Alert.alert('Fejl', 'Session navn er påkrævet');
       return;
     }
 
+    if (!editSessionForm.muscleGroupId) {
+      Alert.alert('Fejl', 'Vælg en muskelgruppe');
+      return;
+    }
+
     try {
+      // Update the session
       await updateTrainingSession(selectedSession.id, {
         name: editSessionForm.name,
-        description: editSessionForm.description
+        description: editSessionForm.description,
+        muscle_group_id: editSessionForm.muscleGroupId
       });
+
+      // Update exercises - remove old ones and add new ones
+      const db = getDatabase();
       
+      // Remove all exercises from this session
+      await db.runAsync('DELETE FROM exercises WHERE session_id = ?', [selectedSession.id]);
+      
+      // Add selected exercises to the session
+      for (let i = 0; i < editSessionForm.selectedExercises.length; i++) {
+        const exercise = editSessionForm.selectedExercises[i];
+        await db.runAsync(`
+          INSERT INTO exercises (id, name, muscle_group_id, session_id, order_index, description, equipment, difficulty, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          `${Date.now()}_${i}`,
+          exercise.name,
+          editSessionForm.muscleGroupId,
+          selectedSession.id,
+          i,
+          exercise.description || '',
+          exercise.equipment || '',
+          exercise.difficulty || 'beginner',
+          new Date().toISOString()
+        ]);
+      }
+      
+      console.log('✅ Session updated successfully');
       Alert.alert('Succes', 'Session opdateret!');
       loadTrainingSessions();
+      loadExercises();
       setShowEditSession(false);
       setSelectedSession(null);
     } catch (error) {
+      console.error('❌ Failed to update session:', error);
       Alert.alert('Fejl', 'Kunne ikke opdatere session');
     }
+  };
+
+  const toggleExerciseSelection = (exercise: Exercise) => {
+    setEditSessionForm(prev => ({
+      ...prev,
+      selectedExercises: prev.selectedExercises.find(ex => ex.id === exercise.id)
+        ? prev.selectedExercises.filter(ex => ex.id !== exercise.id)
+        : [...prev.selectedExercises, exercise]
+    }));
   };
 
   const handleDeleteSession = (sessionId: string) => {
@@ -1029,7 +1084,10 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                 <Text style={[styles.builderSessionDescription, { color: theme.colors.textSecondary }]}>{session.description}</Text>
               </View>
               <View style={styles.builderSessionActions}>
-                <TouchableOpacity style={[styles.builderActionButton, { backgroundColor: theme.colors.divider }]}>
+                <TouchableOpacity 
+                  style={[styles.builderActionButton, { backgroundColor: theme.colors.divider }]}
+                  onPress={() => handleEditSession(session)}
+                >
                   <Ionicons name="create" size={16} color={theme.colors.secondary} />
                 </TouchableOpacity>
                 <TouchableOpacity 
@@ -1168,10 +1226,10 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
             )}
             
             <TouchableOpacity
-              style={[styles.modalButton, { backgroundColor: theme.colors.primary }]}
+              style={[styles.closeButton, { backgroundColor: theme.colors.primary }]}
               onPress={() => setShowExerciseDetails(false)}
             >
-              <Text style={styles.modalButtonText}>Luk</Text>
+              <Text style={styles.closeButtonText}>Luk</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1899,31 +1957,79 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Rediger Session</Text>
             
-            <TextInput
-              style={[styles.input, { 
-                backgroundColor: theme.colors.card, 
-                color: theme.colors.text, 
-                borderColor: theme.colors.border 
-              }]}
-              placeholder="Session navn"
-              placeholderTextColor={theme.colors.textTertiary}
-              value={editSessionForm.name}
-              onChangeText={(text) => setEditSessionForm({ ...editSessionForm, name: text })}
-            />
-            
-            <TextInput
-              style={[styles.input, styles.textArea, { 
-                backgroundColor: theme.colors.card, 
-                color: theme.colors.text, 
-                borderColor: theme.colors.border 
-              }]}
-              placeholder="Beskrivelse"
-              placeholderTextColor={theme.colors.textTertiary}
-              value={editSessionForm.description}
-              onChangeText={(text) => setEditSessionForm({ ...editSessionForm, description: text })}
-              multiline
-              numberOfLines={3}
-            />
+            <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
+              <TextInput
+                style={[styles.input, { 
+                  backgroundColor: theme.colors.card, 
+                  color: theme.colors.text, 
+                  borderColor: theme.colors.border 
+                }]}
+                placeholder="Session navn"
+                placeholderTextColor={theme.colors.textTertiary}
+                value={editSessionForm.name}
+                onChangeText={(text) => setEditSessionForm({ ...editSessionForm, name: text })}
+              />
+              
+              <TextInput
+                style={[styles.input, styles.textArea, { 
+                  backgroundColor: theme.colors.card, 
+                  color: theme.colors.text, 
+                  borderColor: theme.colors.border 
+                }]}
+                placeholder="Beskrivelse"
+                placeholderTextColor={theme.colors.textTertiary}
+                value={editSessionForm.description}
+                onChangeText={(text) => setEditSessionForm({ ...editSessionForm, description: text })}
+                multiline
+                numberOfLines={3}
+              />
+
+              <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Muskelgruppe:</Text>
+              <View style={styles.muscleGroupGrid}>
+                {muscleGroups.map((muscleGroup) => (
+                  <TouchableOpacity
+                    key={muscleGroup.id}
+                    style={[
+                      styles.muscleGroupOption,
+                      editSessionForm.muscleGroupId === muscleGroup.id && styles.selectedMuscleGroup
+                    ]}
+                    onPress={() => setEditSessionForm({ ...editSessionForm, muscleGroupId: muscleGroup.id })}
+                  >
+                    <View style={[styles.muscleGroupColor, { backgroundColor: muscleGroup.color }]} />
+                    <Text style={[
+                      styles.muscleGroupOptionText,
+                      { color: editSessionForm.muscleGroupId === muscleGroup.id ? '#FFFFFF' : theme.colors.text }
+                    ]}>
+                      {muscleGroup.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Vælg Øvelser:</Text>
+              <View style={styles.exerciseSelectionContainer}>
+                {exercises.filter(ex => ex.muscle_group_id === editSessionForm.muscleGroupId).map((exercise) => (
+                  <TouchableOpacity
+                    key={exercise.id}
+                    style={[
+                      styles.exerciseSelectionItem,
+                      editSessionForm.selectedExercises.find(ex => ex.id === exercise.id) && styles.selectedExercise
+                    ]}
+                    onPress={() => toggleExerciseSelection(exercise)}
+                  >
+                    <Text style={[
+                      styles.exerciseSelectionText,
+                      { color: editSessionForm.selectedExercises.find(ex => ex.id === exercise.id) ? '#FFFFFF' : theme.colors.text }
+                    ]}>
+                      {exercise.name}
+                    </Text>
+                    {editSessionForm.selectedExercises.find(ex => ex.id === exercise.id) && (
+                      <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
             
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -2372,6 +2478,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
+  closeButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginTop: 20,
+  },
+  closeButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+  },
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2794,6 +2913,28 @@ const styles = StyleSheet.create({
   },
   selectedMuscleGroup: {
     backgroundColor: '#007AFF',
+  },
+  exerciseSelectionContainer: {
+    maxHeight: 200,
+    marginBottom: 20,
+  },
+  exerciseSelectionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    marginBottom: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  selectedExercise: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  exerciseSelectionText: {
+    fontSize: 14,
+    flex: 1,
   },
   // Progressive Overload Styles
   progressiveOverloadSection: {
