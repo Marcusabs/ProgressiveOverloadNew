@@ -29,6 +29,9 @@ export const initDatabase = async (): Promise<SQLite.SQLiteDatabase> => {
   // Insert default muscle groups if they don't exist
   await insertDefaultMuscleGroups(db);
   
+  // Remove deprecated muscle groups
+  await removeDeprecatedMuscleGroups(db);
+  
   return db;
 };
 
@@ -78,6 +81,55 @@ const insertDefaultMuscleGroups = async (db: SQLite.SQLiteDatabase) => {
     console.log('✅ Default muscle groups inserted successfully!');
   } catch (error) {
     console.error('Failed to insert default muscle groups:', error);
+  }
+};
+
+const removeDeprecatedMuscleGroups = async (db: SQLite.SQLiteDatabase) => {
+  try {
+    console.log('🗑️ Checking for deprecated muscle groups...');
+    
+    // List of deprecated muscle groups to remove
+    const deprecatedGroups = ['Glutes', 'glutes'];
+    
+    for (const groupName of deprecatedGroups) {
+      // Find the deprecated muscle group
+      const deprecatedGroup = await db.getFirstAsync('SELECT * FROM muscle_groups WHERE name = ?', [groupName]);
+      
+      if (!deprecatedGroup) {
+        console.log(`✅ ${groupName} muscle group not found - already removed`);
+        continue;
+      }
+      
+      console.log(`🎯 Found deprecated muscle group: ${groupName}`);
+      
+      // Check if there are any exercises using this muscle group
+      const exercisesWithDeprecatedGroup = await db.getAllAsync('SELECT * FROM exercises WHERE muscle_group_id = ?', [(deprecatedGroup as any).id]);
+      
+      if (exercisesWithDeprecatedGroup.length > 0) {
+        console.log(`⚠️ Found ${exercisesWithDeprecatedGroup.length} exercises using ${groupName} muscle group`);
+        
+        // Move these exercises to 'Ben' muscle group instead
+        const benGroup = await db.getFirstAsync('SELECT * FROM muscle_groups WHERE name = ?', ['Ben']);
+        
+        if (benGroup) {
+          console.log(`🔄 Moving exercises from ${groupName} to Ben muscle group...`);
+          await db.runAsync('UPDATE exercises SET muscle_group_id = ? WHERE muscle_group_id = ?', [(benGroup as any).id, (deprecatedGroup as any).id]);
+          console.log('✅ Exercises moved successfully');
+        } else {
+          console.log('❌ Ben muscle group not found - cannot move exercises');
+          continue;
+        }
+      }
+      
+      // Remove the deprecated muscle group
+      console.log(`🗑️ Removing ${groupName} muscle group...`);
+      await db.runAsync('DELETE FROM muscle_groups WHERE id = ?', [(deprecatedGroup as any).id]);
+      
+      console.log(`🎉 ${groupName} muscle group removed successfully!`);
+    }
+    
+  } catch (error) {
+    console.error('❌ Failed to remove deprecated muscle groups:', error);
   }
 };
 
