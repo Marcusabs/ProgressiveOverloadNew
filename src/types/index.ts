@@ -78,13 +78,12 @@ export interface Set {
 }
 
 export interface ProgressData {
-  id: string;
-  exercise_id: string;
-  workout_id: string;
-  date: string;
-  max_weight: number;
-  total_volume: number;
-  one_rep_max?: number;
+  exerciseId: string;
+  exerciseName: string;
+  date: Date;
+  maxWeight: number;
+  totalVolume: number;
+  oneRepMax?: number;
 }
 
 export interface ProgressiveOverloadSuggestion {

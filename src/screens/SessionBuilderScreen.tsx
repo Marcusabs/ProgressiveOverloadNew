@@ -36,7 +36,8 @@ export default function SessionBuilderScreen() {
   const [selectedMuscleGroups, setSelectedMuscleGroups] = useState<string[]>([]);
   const [editSessionForm, setEditSessionForm] = useState({
     name: '',
-    description: ''
+    description: '',
+    muscle_group_id: ''
   });
 
   useEffect(() => {
@@ -95,7 +96,8 @@ export default function SessionBuilderScreen() {
     setSelectedSession(session);
     setEditSessionForm({
       name: session.name,
-      description: session.description || ''
+      description: session.description || '',
+      muscle_group_id: session.muscle_group_id
     });
     setShowEditSession(true);
   };
@@ -106,10 +108,16 @@ export default function SessionBuilderScreen() {
       return;
     }
 
+    if (!editSessionForm.muscle_group_id) {
+      Alert.alert('Fejl', 'Vælg venligst en muskelgruppe');
+      return;
+    }
+
     try {
       await updateTrainingSession(selectedSession.id, {
         name: editSessionForm.name,
-        description: editSessionForm.description
+        description: editSessionForm.description,
+        muscle_group_id: editSessionForm.muscle_group_id
       });
       
       Alert.alert('Succes', 'Session opdateret!');
@@ -311,6 +319,31 @@ export default function SessionBuilderScreen() {
               multiline
               numberOfLines={3}
             />
+
+            {/* Muscle Group Selector */}
+            <View style={styles.muscleGroupSection}>
+              <Text style={styles.muscleGroupTitle}>Vælg Muskelgruppe:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.muscleGroupScrollView}>
+                {muscleGroups.map(group => (
+                  <TouchableOpacity
+                    key={group.id}
+                    style={[
+                      styles.muscleGroupChip,
+                      { backgroundColor: group.color },
+                      editSessionForm.muscle_group_id === group.id && styles.muscleGroupChipSelected
+                    ]}
+                    onPress={() => setEditSessionForm({ ...editSessionForm, muscle_group_id: group.id })}
+                  >
+                    <Text style={[
+                      styles.muscleGroupChipText,
+                      editSessionForm.muscle_group_id === group.id && styles.muscleGroupChipTextSelected
+                    ]}>
+                      {group.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -544,6 +577,39 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
     marginBottom: 20,
+  },
+  muscleGroupSection: {
+    marginBottom: 20,
+  },
+  muscleGroupTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  muscleGroupScrollView: {
+    maxHeight: 60,
+  },
+  muscleGroupChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    marginRight: 10,
+    opacity: 0.8,
+  },
+  muscleGroupChipSelected: {
+    opacity: 1,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  muscleGroupChipText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  muscleGroupChipTextSelected: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
   muscleGroupOption: {
     backgroundColor: '#f5f5f5',

@@ -34,6 +34,7 @@ export interface ExerciseState {
   setCurrentWorkout: (workout: Workout | null) => void;
   getExercisesBySession: (sessionId: string) => Exercise[];
   getExercisesByMuscleGroup: (muscleGroupId: string) => Exercise[];
+  saveWorkoutProgress: (workoutId: string) => Promise<void>;
 }
 
 export const useExerciseStore = create<ExerciseState>((set, get) => ({
@@ -104,7 +105,13 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
 
   loadTrainingSessions: async () => {
     try {
+      console.log('🔄 Loading training sessions...');
       const db = getDatabase();
+      
+      // First check all sessions in database
+      const allSessions = await db.getAllAsync(`SELECT * FROM training_sessions`);
+      console.log('📊 All sessions in database:', allSessions);
+      
       const result = await db.getAllAsync(`
         SELECT ts.*, mg.name as muscle_group_name, mg.color as muscle_group_color
         FROM training_sessions ts
@@ -112,6 +119,8 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         WHERE ts.is_active = 1
         ORDER BY ts.name
       `);
+      
+      console.log('📊 Active sessions found:', result.length, result);
       
       const trainingSessions: TrainingSession[] = result.map((row: any) => ({
         id: row.id,
@@ -122,9 +131,10 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         created_at: row.created_at
       }));
       
+      console.log('✅ Processed training sessions:', trainingSessions);
       set({ trainingSessions });
     } catch (error) {
-      console.error('Failed to load training sessions:', error);
+      console.error('❌ Failed to load training sessions:', error);
     }
   },
 
@@ -488,6 +498,9 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         WHERE id = ?
       `, [duration, notes || null, date || new Date().toISOString().split('T')[0], workoutId]);
 
+      // Save progress data for all exercises in this workout
+      await get().saveWorkoutProgress(workoutId);
+
       set({ currentWorkout: null });
       get().loadWorkouts();
     } catch (error) {
@@ -784,6 +797,75 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
     } catch (error) {
       console.error('Failed to update workout:', error);
       throw error;
+    }
+  },
+
+  saveWorkoutProgress: async (workoutId) => {
+    try {
+      const db = getDatabase();
+      
+      // Get all workout exercises and their sets
+      const workoutData = await db.getAllAsync(`
+        SELECT we.exercise_id, s.reps, s.weight, w.date
+        FROM workouts w
+        JOIN workout_exercises we ON w.id = we.workout_id
+        JOIN sets s ON we.id = s.workout_exercise_id
+        WHERE w.id = ? AND s.completed = 1
+      `, [workoutId]);
+
+      if (workoutData.length === 0) return;
+
+      // Group by exercise
+      const exerciseGroups: Record<string, any[]> = workoutData.reduce((groups: Record<string, any[]>, data: any) => {
+        if (!groups[data.exercise_id]) {
+          groups[data.exercise_id] = [];
+        }
+        groups[data.exercise_id].push(data);
+        return groups;
+      }, {});
+
+      // Calculate and save progress for each exercise
+      for (const [exerciseId, sets] of Object.entries(exerciseGroups)) {
+        const setsArray = sets;
+        
+        const maxWeight = Math.max(...setsArray.map(s => s.weight));
+        const totalVolume = setsArray.reduce((total, s) => total + (s.weight * s.reps), 0);
+        
+        // Calculate 1RM using Brzycki formula
+        const oneRepMax = Math.max(...setsArray.map(s => {
+          if (s.reps === 1) return s.weight;
+          if (s.reps <= 0) return 0;
+          return Math.round(s.weight * (36 / (37 - s.reps)) * 100) / 100;
+        }));
+
+        // Save progress data
+        const progressId = `${workoutId}_${exerciseId}`;
+        await db.runAsync(`
+          INSERT OR REPLACE INTO progress_data (id, exercise_id, workout_id, date, max_weight, total_volume, one_rep_max)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [
+          progressId,
+          exerciseId,
+          workoutId,
+          setsArray[0].date,
+          maxWeight,
+          totalVolume,
+          oneRepMax
+        ]);
+      }
+
+      console.log('✅ Workout progress saved successfully');
+      
+      // Reload progress data in progress store
+      const { useProgressStore } = await import('./progressStore');
+      useProgressStore.getState().loadProgressData();
+      
+      // Check achievements after workout completion
+      const { useAchievementsStore } = await import('./achievementsStore');
+      await useAchievementsStore.getState().loadUserStats();
+      await useAchievementsStore.getState().checkAchievements();
+    } catch (error) {
+      console.error('❌ Failed to save workout progress:', error);
     }
   }
 }));

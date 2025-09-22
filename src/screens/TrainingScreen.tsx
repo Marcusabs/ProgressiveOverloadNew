@@ -93,6 +93,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
   const [manualCurrentSet, setManualCurrentSet] = useState({ reps: '', weight: '' });
   const [manualCompletedSets, setManualCompletedSets] = useState<Array<{reps: number, weight: number}>>([]);
   const [manualAllExerciseSets, setManualAllExerciseSets] = useState<{[exerciseId: string]: Array<{reps: number, weight: number}>}>({});
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [editSessionForm, setEditSessionForm] = useState({
     name: '',
     description: '',
@@ -2388,14 +2389,21 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                   {/* Date and Duration */}
                   <View style={styles.setupInputs}>
                     <View style={styles.inputGroup}>
-                      <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Dato:</Text>
-                      <TextInput
-                        style={[styles.setupInput, { backgroundColor: theme.colors.card, color: theme.colors.text }]}
-                        value={manualWorkoutData.date}
-                        onChangeText={(text) => setManualWorkoutData({ ...manualWorkoutData, date: text })}
-                        placeholder="2024-01-15"
-                        placeholderTextColor={theme.colors.textTertiary}
-                      />
+                      <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Vælg Dato:</Text>
+                      <TouchableOpacity
+                        style={[styles.datePickerButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+                        onPress={() => setShowDatePicker(true)}
+                      >
+                        <Ionicons name="calendar" size={20} color={theme.colors.primary} />
+                        <Text style={[styles.datePickerText, { color: theme.colors.text }]}>
+                          {new Date(manualWorkoutData.date).toLocaleDateString('da-DK', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          })}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                     <View style={styles.inputGroup}>
                       <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Varighed (min):</Text>
@@ -2524,6 +2532,116 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                 </TouchableOpacity>
               </ScrollView>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Date Picker Modal */}
+      <Modal
+        visible={showDatePicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
+          <View style={[styles.datePickerModal, { backgroundColor: theme.colors.surface }]}>
+            {/* Header */}
+            <View style={[styles.modalHeader, { borderBottomWidth: 1, borderBottomColor: theme.colors.border, marginBottom: 20 }]}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Vælg Dato</Text>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => setShowDatePicker(false)}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Quick Date Options */}
+            <View style={styles.quickDateOptions}>
+              <TouchableOpacity
+                style={[styles.quickDateButton, { backgroundColor: theme.colors.primary }]}
+                onPress={() => {
+                  setManualWorkoutData({ ...manualWorkoutData, date: new Date().toISOString().split('T')[0] });
+                  setShowDatePicker(false);
+                }}
+              >
+                <Text style={styles.quickDateButtonText}>I dag</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.quickDateButton, { backgroundColor: theme.colors.secondary }]}
+                onPress={() => {
+                  const yesterday = new Date();
+                  yesterday.setDate(yesterday.getDate() - 1);
+                  setManualWorkoutData({ ...manualWorkoutData, date: yesterday.toISOString().split('T')[0] });
+                  setShowDatePicker(false);
+                }}
+              >
+                <Text style={styles.quickDateButtonText}>I går</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Calendar Grid */}
+            <View style={styles.weekCalendar}>
+              <Text style={[styles.calendarTitle, { color: theme.colors.text }]}>Seneste 7 dage</Text>
+              <View style={styles.weekDays}>
+                {Array.from({ length: 7 }, (_, i) => {
+                  const date = new Date();
+                  date.setDate(date.getDate() - i);
+                  const dateString = date.toISOString().split('T')[0];
+                  const isSelected = manualWorkoutData.date === dateString;
+                  
+                  return (
+                    <TouchableOpacity
+                      key={i}
+                      style={[
+                        styles.dayButton,
+                        { backgroundColor: theme.colors.card },
+                        isSelected && { backgroundColor: theme.colors.primary }
+                      ]}
+                      onPress={() => {
+                        setManualWorkoutData({ ...manualWorkoutData, date: dateString });
+                        setShowDatePicker(false);
+                      }}
+                    >
+                      <Text style={[
+                        styles.dayText,
+                        { color: theme.colors.text },
+                        isSelected && { color: '#fff', fontWeight: 'bold' }
+                      ]}>
+                        {date.getDate()}
+                      </Text>
+                      <Text style={[
+                        styles.dayLabel,
+                        { color: theme.colors.textSecondary },
+                        isSelected && { color: '#fff' }
+                      ]}>
+                        {date.toLocaleDateString('da-DK', { weekday: 'short' })}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Manual Date Input */}
+            <View style={styles.manualDateInput}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Eller indtast dato:</Text>
+              <TextInput
+                style={[styles.setupInput, { backgroundColor: theme.colors.card, color: theme.colors.text, borderColor: theme.colors.border }]}
+                value={manualWorkoutData.date}
+                onChangeText={(text) => setManualWorkoutData({ ...manualWorkoutData, date: text })}
+                placeholder="2024-01-15"
+                placeholderTextColor={theme.colors.textTertiary}
+              />
+            </View>
+
+            {/* Close Button */}
+            <TouchableOpacity
+              style={[styles.modalButton, styles.confirmButton, { backgroundColor: theme.colors.primary, marginTop: 10 }]}
+              onPress={() => setShowDatePicker(false)}
+            >
+              <Text style={styles.confirmButtonText}>Luk</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -3689,5 +3807,74 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  // Date Picker Styles
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+  },
+  datePickerText: {
+    fontSize: 16,
+    flex: 1,
+  },
+  datePickerModal: {
+    borderRadius: 12,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+    alignSelf: 'center',
+  },
+  quickDateOptions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 25,
+  },
+  quickDateButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  quickDateButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  weekCalendar: {
+    marginBottom: 25,
+  },
+  calendarTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  weekDays: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  dayButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  dayLabel: {
+    fontSize: 10,
+    marginTop: 2,
+  },
+  manualDateInput: {
+    marginBottom: 15,
   },
 });

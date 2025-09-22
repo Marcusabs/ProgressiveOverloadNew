@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
 import { Calendar } from 'react-native-calendars';
+import { useFocusEffect } from '@react-navigation/native';
 import { useExerciseStore } from '../stores/exerciseStore';
 import { useProgressStore } from '../stores/progressStore';
 import { useAchievementsStore } from '../stores/achievementsStore';
@@ -28,15 +29,29 @@ export default function ProgressScreen() {
   const [recentWorkouts, setRecentWorkouts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [heatMapData, setHeatMapData] = useState<Record<string, any>>({});
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDateWorkouts, setSelectedDateWorkouts] = useState<any[]>([]);
   const screenWidth = Dimensions.get('window').width;
 
   useEffect(() => {
     loadData();
   }, []);
 
+  // Reload data when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadData();
+    }, [])
+  );
+
   const loadData = async () => {
     try {
       setIsLoading(true);
+      
+      // Load progress data first
+      const { loadProgressData } = useProgressStore.getState();
+      await loadProgressData();
+      
       const workouts = await getRecentWorkouts(10);
       setRecentWorkouts(workouts);
       
@@ -73,8 +88,8 @@ export default function ProgressScreen() {
       let totalSets = 0;
       
       dayWorkouts.forEach(workout => {
-        // Count sets from workout (simplified)
-        totalSets += 1; // Each workout counts as 1 set for now
+        // Count sets from workout - use exercise_count or default to 1
+        totalSets += workout.exercise_count || 1;
       });
       
       // Determine intensity level (0-4)
@@ -123,9 +138,9 @@ export default function ProgressScreen() {
     const totalWorkouts = completedWorkouts.length;
     
     // Calculate total volume and average weight from progress data
-    const totalVolume = progressData.reduce((sum, p) => sum + p.total_volume, 0);
+    const totalVolume = progressData.reduce((sum, p) => sum + p.totalVolume, 0);
     const averageWeight = progressData.length > 0 
-      ? progressData.reduce((sum, p) => sum + p.max_weight, 0) / progressData.length 
+      ? progressData.reduce((sum, p) => sum + p.maxWeight, 0) / progressData.length 
       : 0;
     
     // Calculate this week's workouts
@@ -152,7 +167,7 @@ export default function ProgressScreen() {
 
     // Group by exercise and get last 7 data points
     const exerciseGroups = progressData.reduce((groups, data) => {
-      const exerciseName = exercises.find(e => e.id === data.exercise_id)?.name || 'Unknown';
+      const exerciseName = exercises.find(e => e.id === data.exerciseId)?.name || 'Unknown';
       if (!groups[exerciseName]) {
         groups[exerciseName] = [];
       }
@@ -172,7 +187,7 @@ export default function ProgressScreen() {
     return {
       labels: exerciseData.map(d => d.date.toLocaleDateString('da-DK', { month: 'short', day: 'numeric' })),
       datasets: [{
-        data: exerciseData.map(d => d.max_weight),
+        data: exerciseData.map(d => d.maxWeight),
         color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
         strokeWidth: 2
       }]
@@ -190,7 +205,7 @@ export default function ProgressScreen() {
       if (!groups[dateKey]) {
         groups[dateKey] = { date: date, totalVolume: 0 };
       }
-      groups[dateKey].totalVolume += data.total_volume;
+      groups[dateKey].totalVolume += data.totalVolume;
       return groups;
     }, {} as Record<string, any>);
 
@@ -696,8 +711,12 @@ export default function ProgressScreen() {
         <View style={[styles.calendarContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
           <Calendar
             onDayPress={(day) => {
-              // Handle day press - could show workout details
-              console.log('Selected day:', day);
+              const dateString = day.dateString;
+              setSelectedDate(dateString);
+              
+              // Find workouts for selected date
+              const dayWorkouts = workouts.filter(workout => workout.date === dateString);
+              setSelectedDateWorkouts(dayWorkouts);
             }}
             markedDates={heatMapData}
             theme={{
@@ -725,6 +744,61 @@ export default function ProgressScreen() {
             }}
           />
         </View>
+
+        {/* Selected Date Workouts */}
+        {selectedDate && (
+          <View style={[styles.selectedDateContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <Text style={[styles.selectedDateTitle, { color: theme.colors.text }]}>
+              {new Date(selectedDate).toLocaleDateString('da-DK', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}
+            </Text>
+            
+            {selectedDateWorkouts.length > 0 ? (
+              selectedDateWorkouts.map((workout, index) => (
+                <View key={workout.id || index} style={[styles.workoutCard, { backgroundColor: theme.colors.background }]}>
+                  <View style={styles.workoutHeader}>
+                    <Ionicons name="fitness" size={20} color={theme.colors.primary} />
+                    <Text style={[styles.workoutName, { color: theme.colors.text }]}>
+                      {workout.name || 'Workout'}
+                    </Text>
+                  </View>
+                  
+                  {workout.duration && (
+                    <View style={styles.workoutDetail}>
+                      <Ionicons name="time" size={16} color={theme.colors.textSecondary} />
+                      <Text style={[styles.workoutDetailText, { color: theme.colors.textSecondary }]}>
+                        {workout.duration} minutter
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {workout.exercise_count && (
+                    <View style={styles.workoutDetail}>
+                      <Ionicons name="barbell" size={16} color={theme.colors.textSecondary} />
+                      <Text style={[styles.workoutDetailText, { color: theme.colors.textSecondary }]}>
+                        {workout.completed_exercises || workout.exercise_count} øvelser
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ))
+            ) : (
+              <View style={[styles.noWorkoutCard, { backgroundColor: theme.colors.background }]}>
+                <Ionicons name="calendar-outline" size={24} color={theme.colors.textTertiary} />
+                <Text style={[styles.noWorkoutText, { color: theme.colors.textSecondary }]}>
+                  Ingen træning denne dag
+                </Text>
+                <Text style={[styles.noWorkoutSubtext, { color: theme.colors.textTertiary }]}>
+                  Klik på andre datoer for at se dine træninger
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Workout Summary */}
         <View style={styles.section}>
@@ -1359,6 +1433,61 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  selectedDateContainer: {
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  selectedDateTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  workoutCard: {
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+  },
+  workoutHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  workoutName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  workoutDetail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  workoutDetailText: {
+    fontSize: 14,
+    marginLeft: 6,
+  },
+  noWorkoutCard: {
+    borderRadius: 8,
+    padding: 20,
+    alignItems: 'center',
+  },
+  noWorkoutText: {
+    fontSize: 16,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  noWorkoutSubtext: {
+    fontSize: 14,
+    marginTop: 4,
+    textAlign: 'center',
   },
   workoutStatsGrid: {
     flexDirection: 'row',
