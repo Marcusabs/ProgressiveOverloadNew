@@ -133,6 +133,8 @@ export default function ProfileScreen() {
               await deleteWorkout(workout.id);
               
               // Refresh data
+              const { loadWorkouts } = useExerciseStore.getState();
+              await loadWorkouts();
               await loadRecentWorkouts();
               await loadAllWorkouts();
               

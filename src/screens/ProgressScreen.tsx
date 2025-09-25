@@ -133,12 +133,19 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
               // Refresh data
               await loadData();
               
+              // Also reload exercises store to ensure workouts are updated
+              const { loadWorkouts } = useExerciseStore.getState();
+              await loadWorkouts();
+              
               // Close modal and update selected date workouts
               setShowWorkoutDetailsModal(false);
               if (selectedDate) {
                 const updatedWorkouts = workouts.filter(w => w.date === selectedDate && w.id !== selectedWorkout.id);
                 setSelectedDateWorkouts(updatedWorkouts);
               }
+              
+              // Recalculate heat map data after deletion
+              calculateHeatMapData();
               
               Alert.alert('Succes', 'Træningen blev slettet');
             } catch (error) {

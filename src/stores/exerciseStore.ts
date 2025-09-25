@@ -756,11 +756,34 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
     try {
       const db = getDatabase();
       
+      console.log('Starting deletion of workout:', workoutId);
+      
+      // Check if workout exists first
+      const workoutExists = await db.getFirstAsync('SELECT id FROM workouts WHERE id = ?', [workoutId]);
+      if (!workoutExists) {
+        throw new Error('Workout not found');
+      }
+      
       // Delete all related data first (use correct table names)
-      await db.runAsync('DELETE FROM sets WHERE workout_exercise_id IN (SELECT id FROM workout_exercises WHERE workout_id = ?)', [workoutId]);
-      await db.runAsync('DELETE FROM workout_exercises WHERE workout_id = ?', [workoutId]);
-      await db.runAsync('DELETE FROM progress_data WHERE workout_id = ?', [workoutId]);
-      await db.runAsync('DELETE FROM workouts WHERE id = ?', [workoutId]);
+      console.log('Deleting sets...');
+      const setsResult = await db.runAsync('DELETE FROM sets WHERE workout_exercise_id IN (SELECT id FROM workout_exercises WHERE workout_id = ?)', [workoutId]);
+      console.log('Deleted sets, affected rows:', setsResult.changes);
+      
+      console.log('Deleting workout_exercises...');
+      const workoutExercisesResult = await db.runAsync('DELETE FROM workout_exercises WHERE workout_id = ?', [workoutId]);
+      console.log('Deleted workout_exercises, affected rows:', workoutExercisesResult.changes);
+      
+      console.log('Deleting progress_data...');
+      const progressResult = await db.runAsync('DELETE FROM progress_data WHERE workout_id = ?', [workoutId]);
+      console.log('Deleted progress_data, affected rows:', progressResult.changes);
+      
+      console.log('Deleting workout...');
+      const workoutResult = await db.runAsync('DELETE FROM workouts WHERE id = ?', [workoutId]);
+      console.log('Deleted workout, affected rows:', workoutResult.changes);
+      
+      if (workoutResult.changes === 0) {
+        throw new Error('No workout was deleted');
+      }
       
       // Update local state
       set(state => ({
