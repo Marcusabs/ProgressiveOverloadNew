@@ -312,7 +312,7 @@ export default function SessionBuilderScreen() {
             />
             
             <TextInput
-              style={[styles.input, styles.textArea]}
+              style={[styles.input, { height: 80, textAlignVertical: 'top' }]}
               placeholder="Beskrivelse (valgfri)"
               value={editSessionForm.description}
               onChangeText={(text) => setEditSessionForm({ ...editSessionForm, description: text })}

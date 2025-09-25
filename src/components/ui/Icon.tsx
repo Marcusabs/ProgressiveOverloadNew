@@ -64,7 +64,7 @@ const Icon = memo<IconProps>(({
     return (
       <View style={containerStyles}>
         <LinearGradient
-          colors={gradientColors}
+          colors={gradientColors as any}
           style={[
             styles.gradientContainer,
             {

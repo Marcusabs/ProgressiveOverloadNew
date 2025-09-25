@@ -150,16 +150,16 @@ export const useAchievementsStore = create<AchievementsState>((set, get) => ({
       `, [startOfMonth.toISOString()]);
 
       const userStats: UserStats = {
-        totalWorkouts: workoutStats?.totalWorkouts || 0,
-        totalExercises: exerciseStats?.totalExercises || 0,
-        totalSets: exerciseStats?.totalSets || 0,
-        totalVolume: exerciseStats?.totalVolume || 0,
+        totalWorkouts: (workoutStats as any)?.totalWorkouts || 0,
+        totalExercises: (exerciseStats as any)?.totalExercises || 0,
+        totalSets: (exerciseStats as any)?.totalSets || 0,
+        totalVolume: (exerciseStats as any)?.totalVolume || 0,
         currentStreak,
         longestStreak,
-        thisWeekWorkouts: thisWeekWorkouts?.count || 0,
-        thisMonthWorkouts: thisMonthWorkouts?.count || 0,
-        maxWeightLifted: exerciseStats?.maxWeightLifted || 0,
-        totalWorkoutTime: workoutStats?.totalWorkoutTime || 0,
+        thisWeekWorkouts: (thisWeekWorkouts as any)?.count || 0,
+        thisMonthWorkouts: (thisMonthWorkouts as any)?.count || 0,
+        maxWeightLifted: (exerciseStats as any)?.maxWeightLifted || 0,
+        totalWorkoutTime: (workoutStats as any)?.totalWorkoutTime || 0,
       };
 
       set({ userStats });

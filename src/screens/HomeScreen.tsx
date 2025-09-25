@@ -350,7 +350,7 @@ export default function HomeScreen() {
 
            <TouchableOpacity 
              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
-              onPress={() => navigation.navigate('Progress')}
+              onPress={() => navigation.navigate('Progress', {})}
            >
               <View style={[styles.quickActionIcon, { backgroundColor: theme.colors.accent + '20' }]}>
                 <Ionicons name="stats-chart" size={28} color={theme.colors.accent} />

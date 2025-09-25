@@ -87,13 +87,13 @@ export const Colors = {
 
   // Gradient Colors
   gradients: {
-    primary: ['#FF6B35', '#FF8533'],
-    secondary: ['#0EA5E9', '#38BDF8'],
-    success: ['#22C55E', '#4ADE80'],
-    sunset: ['#FF6B35', '#FFAB66', '#FFE4CC'],
-    ocean: ['#0C4A6E', '#0284C7', '#38BDF8'],
-    forest: ['#14532D', '#16A34A', '#4ADE80'],
-    royal: ['#581C87', '#7C3AED', '#A78BFA'],
+    primary: ['#FF6B35', '#FF8533'] as const,
+    secondary: ['#0EA5E9', '#38BDF8'] as const,
+    success: ['#22C55E', '#4ADE80'] as const,
+    sunset: ['#FF6B35', '#FFAB66', '#FFE4CC'] as const,
+    ocean: ['#0C4A6E', '#0284C7', '#38BDF8'] as const,
+    forest: ['#14532D', '#16A34A', '#4ADE80'] as const,
+    royal: ['#581C87', '#7C3AED', '#A78BFA'] as const,
   },
 };
 
@@ -120,12 +120,12 @@ export const Typography = {
 
   // Font Weights
   fontWeight: {
-    light: '300',
-    normal: '400',
-    medium: '500',
-    semibold: '600',
-    bold: '700',
-    extrabold: '800',
+    light: '300' as const,
+    normal: '400' as const,
+    medium: '500' as const,
+    semibold: '600' as const,
+    bold: '700' as const,
+    extrabold: '800' as const,
   },
 
   // Line Heights

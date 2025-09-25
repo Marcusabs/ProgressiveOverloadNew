@@ -13,7 +13,7 @@ interface QuickActionCardProps {
 
 export const QuickActionCard = memo<QuickActionCardProps>(({ title, icon, gradient, onPress }) => (
   <TouchableOpacity style={styles.quickActionCard} onPress={onPress}>
-    <LinearGradient colors={gradient} style={styles.quickActionGradient}>
+    <LinearGradient colors={gradient as any} style={styles.quickActionGradient}>
       <Ionicons name={icon as any} size={24} color="#fff" />
       <Text style={styles.quickActionText}>{title}</Text>
     </LinearGradient>

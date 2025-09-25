@@ -50,7 +50,7 @@ const Card = memo<CardProps>(({
         activeOpacity={onPress ? 0.9 : 1}
       >
         <LinearGradient
-          colors={gradientColors}
+          colors={gradientColors as any}
           style={styles.gradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
@@ -100,10 +100,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.neutral[0],
     borderWidth: 1,
     borderColor: Colors.neutral[200],
-  },
-  gradient: {
-    backgroundColor: 'transparent',
-    ...Shadows.md,
   },
 
   // States

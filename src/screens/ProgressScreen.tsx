@@ -17,7 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
 import { Calendar } from 'react-native-calendars';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, RouteProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { RootTabParamList } from '../types';
 import { useExerciseStore } from '../stores/exerciseStore';
@@ -26,14 +26,17 @@ import { useAchievementsStore } from '../stores/achievementsStore';
 import { useTheme } from '../contexts/ThemeContext';
 
 type ProgressScreenNavigationProp = BottomTabNavigationProp<RootTabParamList, 'Progress'>;
+type ProgressScreenRouteProp = RouteProp<RootTabParamList, 'Progress'>;
 
-export default function ProgressScreen() {
+export default function ProgressScreen({ route }: { route?: ProgressScreenRouteProp }) {
   const navigation = useNavigation<ProgressScreenNavigationProp>();
   const { exercises, trainingSessions, workouts } = useExerciseStore();
   const { progressData, getRecentWorkouts } = useProgressStore();
   const { achievements, userStats, loadAchievements, loadUserStats, checkAchievements, getAchievementsByCategory, getUnlockedAchievements } = useAchievementsStore();
   const { theme, isDark } = useTheme();
-  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'achievements' | 'calendar'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'achievements' | 'calendar' | 'progression'>(
+    route?.params?.initialTab || 'overview'
+  );
   const [recentWorkouts, setRecentWorkouts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [heatMapData, setHeatMapData] = useState<Record<string, any>>({});
@@ -43,6 +46,9 @@ export default function ProgressScreen() {
   const [selectedWorkout, setSelectedWorkout] = useState<any>(null);
   const [editingWorkout, setEditingWorkout] = useState(false);
   const [workoutSets, setWorkoutSets] = useState<any[]>([]);
+  const [progressionTab, setProgressionTab] = useState<'general' | 'sessions' | 'musclegroups' | 'exercises'>('general');
+  const [selectedProgressionItem, setSelectedProgressionItem] = useState<any>(null);
+  const [progressionData, setProgressionData] = useState<any>({});
   const screenWidth = Dimensions.get('window').width;
 
   useEffect(() => {
@@ -69,6 +75,9 @@ export default function ProgressScreen() {
       
       // Calculate heat map data
       calculateHeatMapData();
+      
+      // Calculate progression data
+      await calculateProgressionData();
       
       // Load achievements and user stats
       await loadAchievements();
@@ -244,6 +253,276 @@ export default function ProgressScreen() {
     });
     
     setHeatMapData(heatMap);
+  };
+
+  // Calculate progression data for sessions, muscle groups, and exercises
+  const calculateProgressionData = async () => {
+    try {
+      const db = (await import('../database')).getDatabase();
+      
+      // Get all sets with workout and exercise data
+      const setsData = await db.getAllAsync(`
+        SELECT 
+          s.id, s.reps, s.weight, s.created_at,
+          w.date, w.session_id, w.name as workout_name,
+          e.name as exercise_name, e.muscle_group_id,
+          ts.name as session_name
+        FROM sets s
+        JOIN workout_exercises we ON s.workout_exercise_id = we.id
+        JOIN workouts w ON we.workout_id = w.id
+        JOIN exercises e ON we.exercise_id = e.id
+        LEFT JOIN training_sessions ts ON w.session_id = ts.id
+        WHERE w.completed = 1
+        ORDER BY w.date ASC, s.created_at ASC
+      `);
+
+      // Process data for different progression types
+      const generalProgression = calculateGeneralProgression(setsData);
+      const sessionProgression = calculateSessionProgression(setsData);
+      const muscleGroupProgression = calculateMuscleGroupProgression(setsData);
+      const exerciseProgression = calculateExerciseProgression(setsData);
+
+      setProgressionData({
+        general: generalProgression,
+        sessions: sessionProgression,
+        muscleGroups: muscleGroupProgression,
+        exercises: exerciseProgression
+      });
+    } catch (error) {
+      console.error('Error calculating progression data:', error);
+    }
+  };
+
+  const calculateGeneralProgression = (setsData: any[]) => {
+    const generalData: Record<string, any> = {};
+    
+    setsData.forEach(set => {
+      const date = set.date;
+      
+      if (!generalData[date]) {
+        generalData[date] = {
+          date,
+          sets: [],
+          totalVolume: 0,
+          maxWeight: 0,
+          totalReps: 0,
+          uniqueExercises: new Set(),
+          uniqueMuscleGroups: new Set(),
+          avgWeight: 0
+        };
+      }
+      
+      const volume = set.reps * set.weight;
+      generalData[date].sets.push(set);
+      generalData[date].totalVolume += volume;
+      generalData[date].maxWeight = Math.max(generalData[date].maxWeight, set.weight);
+      generalData[date].totalReps += set.reps;
+      generalData[date].uniqueExercises.add(set.exercise_name);
+      generalData[date].uniqueMuscleGroups.add(set.muscle_group_id);
+    });
+    
+    // Convert to progression array
+    const progression = Object.keys(generalData)
+      .sort()
+      .map(date => {
+        const data = generalData[date];
+        const avgWeight = data.sets.length > 0 
+          ? data.sets.reduce((sum: number, set: any) => sum + set.weight, 0) / data.sets.length
+          : 0;
+        
+        return {
+          date,
+          totalVolume: data.totalVolume,
+          maxWeight: data.maxWeight,
+          totalReps: data.totalReps,
+          setCount: data.sets.length,
+          exerciseCount: data.uniqueExercises.size,
+          muscleGroupCount: data.uniqueMuscleGroups.size,
+          avgWeight: Math.round(avgWeight * 10) / 10
+        };
+      });
+    
+    return progression;
+  };
+
+  const calculateSessionProgression = (setsData: any[]) => {
+    const sessionData: Record<string, any> = {};
+    
+    setsData.forEach(set => {
+      const sessionId = set.session_id;
+      const sessionName = set.session_name || 'Ukendt Session';
+      const date = set.date;
+      
+      if (!sessionData[sessionId]) {
+        sessionData[sessionId] = {
+          id: sessionId,
+          name: sessionName,
+          workouts: {},
+          progression: []
+        };
+      }
+      
+      // Group by workout date
+      if (!sessionData[sessionId].workouts[date]) {
+        sessionData[sessionId].workouts[date] = {
+          date,
+          sets: [],
+          totalVolume: 0,
+          maxWeight: 0,
+          totalReps: 0
+        };
+      }
+      
+      const volume = set.reps * set.weight;
+      sessionData[sessionId].workouts[date].sets.push(set);
+      sessionData[sessionId].workouts[date].totalVolume += volume;
+      sessionData[sessionId].workouts[date].maxWeight = Math.max(
+        sessionData[sessionId].workouts[date].maxWeight, 
+        set.weight
+      );
+      sessionData[sessionId].workouts[date].totalReps += set.reps;
+    });
+    
+    // Calculate progression for each session
+    Object.keys(sessionData).forEach(sessionId => {
+      const session = sessionData[sessionId];
+      const workoutDates = Object.keys(session.workouts).sort();
+      
+      session.progression = workoutDates.map(date => {
+        const workout = session.workouts[date];
+        return {
+          date,
+          totalVolume: workout.totalVolume,
+          maxWeight: workout.maxWeight,
+          totalReps: workout.totalReps,
+          setCount: workout.sets.length
+        };
+      });
+    });
+    
+    return sessionData;
+  };
+
+  const calculateMuscleGroupProgression = (setsData: any[]) => {
+    const muscleGroupData: Record<string, any> = {};
+    
+    setsData.forEach(set => {
+      const muscleGroupId = set.muscle_group_id;
+      const date = set.date;
+      
+      if (!muscleGroupData[muscleGroupId]) {
+        muscleGroupData[muscleGroupId] = {
+          id: muscleGroupId,
+          workouts: {},
+          progression: []
+        };
+      }
+      
+      // Group by workout date
+      if (!muscleGroupData[muscleGroupId].workouts[date]) {
+        muscleGroupData[muscleGroupId].workouts[date] = {
+          date,
+          sets: [],
+          totalVolume: 0,
+          maxWeight: 0,
+          totalReps: 0,
+          exercises: new Set()
+        };
+      }
+      
+      const volume = set.reps * set.weight;
+      muscleGroupData[muscleGroupId].workouts[date].sets.push(set);
+      muscleGroupData[muscleGroupId].workouts[date].totalVolume += volume;
+      muscleGroupData[muscleGroupId].workouts[date].maxWeight = Math.max(
+        muscleGroupData[muscleGroupId].workouts[date].maxWeight, 
+        set.weight
+      );
+      muscleGroupData[muscleGroupId].workouts[date].totalReps += set.reps;
+      muscleGroupData[muscleGroupId].workouts[date].exercises.add(set.exercise_name);
+    });
+    
+    // Calculate progression for each muscle group
+    Object.keys(muscleGroupData).forEach(muscleGroupId => {
+      const muscleGroup = muscleGroupData[muscleGroupId];
+      const workoutDates = Object.keys(muscleGroup.workouts).sort();
+      
+      muscleGroup.progression = workoutDates.map(date => {
+        const workout = muscleGroup.workouts[date];
+        return {
+          date,
+          totalVolume: workout.totalVolume,
+          maxWeight: workout.maxWeight,
+          totalReps: workout.totalReps,
+          setCount: workout.sets.length,
+          exerciseCount: workout.exercises.size
+        };
+      });
+    });
+    
+    return muscleGroupData;
+  };
+
+  const calculateExerciseProgression = (setsData: any[]) => {
+    const exerciseData: Record<string, any> = {};
+    
+    setsData.forEach(set => {
+      const exerciseName = set.exercise_name;
+      const date = set.date;
+      
+      if (!exerciseData[exerciseName]) {
+        exerciseData[exerciseName] = {
+          name: exerciseName,
+          muscleGroupId: set.muscle_group_id,
+          workouts: {},
+          progression: []
+        };
+      }
+      
+      // Group by workout date
+      if (!exerciseData[exerciseName].workouts[date]) {
+        exerciseData[exerciseName].workouts[date] = {
+          date,
+          sets: [],
+          totalVolume: 0,
+          maxWeight: 0,
+          totalReps: 0,
+          avgWeight: 0
+        };
+      }
+      
+      const volume = set.reps * set.weight;
+      exerciseData[exerciseName].workouts[date].sets.push(set);
+      exerciseData[exerciseName].workouts[date].totalVolume += volume;
+      exerciseData[exerciseName].workouts[date].maxWeight = Math.max(
+        exerciseData[exerciseName].workouts[date].maxWeight, 
+        set.weight
+      );
+      exerciseData[exerciseName].workouts[date].totalReps += set.reps;
+    });
+    
+    // Calculate progression for each exercise
+    Object.keys(exerciseData).forEach(exerciseName => {
+      const exercise = exerciseData[exerciseName];
+      const workoutDates = Object.keys(exercise.workouts).sort();
+      
+      exercise.progression = workoutDates.map(date => {
+        const workout = exercise.workouts[date];
+        const avgWeight = workout.sets.length > 0 
+          ? workout.sets.reduce((sum: number, set: any) => sum + set.weight, 0) / workout.sets.length
+          : 0;
+        
+        return {
+          date,
+          totalVolume: workout.totalVolume,
+          maxWeight: workout.maxWeight,
+          totalReps: workout.totalReps,
+          setCount: workout.sets.length,
+          avgWeight: Math.round(avgWeight * 10) / 10
+        };
+      });
+    });
+    
+    return exerciseData;
   };
 
   const getIntensityColor = (intensity: number): string => {
@@ -816,6 +1095,299 @@ export default function ProgressScreen() {
     );
   };
 
+  const renderProgressionTab = () => {
+    return (
+      <View style={styles.tabContent}>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Progression Tracking</Text>
+          <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>
+            Se dit fremskridt over tid
+          </Text>
+        </View>
+
+        {/* Progression Sub-Tabs */}
+        <View style={[styles.progressionTabNavigation, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+          <TouchableOpacity
+            style={[styles.progressionTabButton, progressionTab === 'general' && { backgroundColor: theme.colors.primary }]}
+            onPress={() => setProgressionTab('general')}
+          >
+            <Text style={[styles.progressionTabText, { color: progressionTab === 'general' ? '#fff' : theme.colors.text }]}>
+              Generel
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.progressionTabButton, progressionTab === 'sessions' && { backgroundColor: theme.colors.primary }]}
+            onPress={() => setProgressionTab('sessions')}
+          >
+            <Text style={[styles.progressionTabText, { color: progressionTab === 'sessions' ? '#fff' : theme.colors.text }]}>
+              Sessioner
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.progressionTabButton, progressionTab === 'musclegroups' && { backgroundColor: theme.colors.primary }]}
+            onPress={() => setProgressionTab('musclegroups')}
+          >
+            <Text style={[styles.progressionTabText, { color: progressionTab === 'musclegroups' ? '#fff' : theme.colors.text }]}>
+              Muskler
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.progressionTabButton, progressionTab === 'exercises' && { backgroundColor: theme.colors.primary }]}
+            onPress={() => setProgressionTab('exercises')}
+          >
+            <Text style={[styles.progressionTabText, { color: progressionTab === 'exercises' ? '#fff' : theme.colors.text }]}>
+              Øvelser
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Progression Content */}
+        {progressionTab === 'general' && renderGeneralProgression()}
+        {progressionTab === 'sessions' && renderSessionProgression()}
+        {progressionTab === 'musclegroups' && renderMuscleGroupProgression()}
+        {progressionTab === 'exercises' && renderExerciseProgression()}
+      </View>
+    );
+  };
+
+  const renderGeneralProgression = () => {
+    const generalData = progressionData.general || [];
+    
+    if (generalData.length === 0) {
+      return (
+        <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
+          <Ionicons name="trending-up-outline" size={48} color={theme.colors.textTertiary} />
+          <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+            Ingen progression data endnu
+          </Text>
+          <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]}>
+            Start med at lave træninger for at se dit fremskridt
+          </Text>
+        </View>
+      );
+    }
+
+    // Prepare chart data
+    const chartData = {
+      labels: generalData.slice(-10).map((item: any) => new Date(item.date).toLocaleDateString('da-DK', { month: 'short', day: 'numeric' })),
+      datasets: [
+        {
+          data: generalData.slice(-10).map((item: any) => item.totalVolume),
+          color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
+          strokeWidth: 3
+        }
+      ]
+    };
+
+    return (
+      <View style={styles.progressionContent}>
+        {/* Volume Chart */}
+        <View style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+          <Text style={[styles.chartTitle, { color: theme.colors.text }]}>Total Volume Over Tid</Text>
+          <LineChart
+            data={chartData}
+            width={screenWidth - 80}
+            height={220}
+            yAxisSuffix=" kg"
+            chartConfig={{
+              backgroundColor: theme.colors.card,
+              backgroundGradientFrom: theme.colors.card,
+              backgroundGradientTo: theme.colors.card,
+              decimalPlaces: 0,
+              color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
+              labelColor: (opacity = 1) => theme.colors.text,
+              style: {
+                borderRadius: 16
+              },
+              propsForDots: {
+                r: "6",
+                strokeWidth: "2",
+                stroke: "#FF6B35"
+              }
+            }}
+            bezier
+            style={styles.chart}
+          />
+        </View>
+
+        {/* Stats Grid */}
+        <View style={styles.progressionStatsGrid}>
+          <View style={[styles.progressionStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <Ionicons name="fitness" size={24} color={theme.colors.primary} />
+            <Text style={[styles.progressionStatValue, { color: theme.colors.text }]}>
+              {generalData[generalData.length - 1]?.totalVolume || 0}
+            </Text>
+            <Text style={[styles.progressionStatLabel, { color: theme.colors.textSecondary }]}>
+              Total Volume (kg)
+            </Text>
+          </View>
+          
+          <View style={[styles.progressionStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <Ionicons name="barbell" size={24} color={theme.colors.secondary} />
+            <Text style={[styles.progressionStatValue, { color: theme.colors.text }]}>
+              {generalData[generalData.length - 1]?.maxWeight || 0}
+            </Text>
+            <Text style={[styles.progressionStatLabel, { color: theme.colors.textSecondary }]}>
+              Maksimal Vægt (kg)
+            </Text>
+          </View>
+          
+          <View style={[styles.progressionStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <Ionicons name="repeat" size={24} color={theme.colors.accent} />
+            <Text style={[styles.progressionStatValue, { color: theme.colors.text }]}>
+              {generalData[generalData.length - 1]?.totalReps || 0}
+            </Text>
+            <Text style={[styles.progressionStatLabel, { color: theme.colors.textSecondary }]}>
+              Total Reps
+            </Text>
+          </View>
+          
+          <View style={[styles.progressionStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <Ionicons name="list" size={24} color={theme.colors.primary} />
+            <Text style={[styles.progressionStatValue, { color: theme.colors.text }]}>
+              {generalData[generalData.length - 1]?.setCount || 0}
+            </Text>
+            <Text style={[styles.progressionStatLabel, { color: theme.colors.textSecondary }]}>
+              Total Sæt
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderSessionProgression = () => {
+    const sessionsData = progressionData.sessions || {};
+    const sessionKeys = Object.keys(sessionsData);
+    
+    if (sessionKeys.length === 0) {
+      return (
+        <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
+          <Ionicons name="list-outline" size={48} color={theme.colors.textTertiary} />
+          <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+            Ingen session data endnu
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.progressionContent}>
+        {sessionKeys.map(sessionId => {
+          const session = sessionsData[sessionId];
+          return (
+            <TouchableOpacity
+              key={sessionId}
+              style={[styles.progressionItemCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+              onPress={() => setSelectedProgressionItem(session)}
+            >
+              <Text style={[styles.progressionItemTitle, { color: theme.colors.text }]}>
+                {session.name}
+              </Text>
+              <Text style={[styles.progressionItemSubtitle, { color: theme.colors.textSecondary }]}>
+                {session.progression.length} træninger
+              </Text>
+              <View style={styles.progressionItemStats}>
+                <Text style={[styles.progressionItemStat, { color: theme.colors.primary }]}>
+                  {session.progression[session.progression.length - 1]?.totalVolume || 0} kg volume
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
+
+  const renderMuscleGroupProgression = () => {
+    const muscleGroupsData = progressionData.muscleGroups || {};
+    const muscleGroupKeys = Object.keys(muscleGroupsData);
+    
+    if (muscleGroupKeys.length === 0) {
+      return (
+        <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
+          <Ionicons name="body-outline" size={48} color={theme.colors.textTertiary} />
+          <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+            Ingen muskelgruppe data endnu
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.progressionContent}>
+        {muscleGroupKeys.map(muscleGroupId => {
+          const muscleGroup = muscleGroupsData[muscleGroupId];
+          return (
+            <TouchableOpacity
+              key={muscleGroupId}
+              style={[styles.progressionItemCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+              onPress={() => setSelectedProgressionItem(muscleGroup)}
+            >
+              <Text style={[styles.progressionItemTitle, { color: theme.colors.text }]}>
+                Muskelgruppe {muscleGroupId}
+              </Text>
+              <Text style={[styles.progressionItemSubtitle, { color: theme.colors.textSecondary }]}>
+                {muscleGroup.progression.length} træninger
+              </Text>
+              <View style={styles.progressionItemStats}>
+                <Text style={[styles.progressionItemStat, { color: theme.colors.secondary }]}>
+                  {muscleGroup.progression[muscleGroup.progression.length - 1]?.totalVolume || 0} kg volume
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
+
+  const renderExerciseProgression = () => {
+    const exercisesData = progressionData.exercises || {};
+    const exerciseKeys = Object.keys(exercisesData);
+    
+    if (exerciseKeys.length === 0) {
+      return (
+        <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
+          <Ionicons name="fitness-outline" size={48} color={theme.colors.textTertiary} />
+          <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+            Ingen øvelse data endnu
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.progressionContent}>
+        {exerciseKeys.slice(0, 10).map(exerciseName => {
+          const exercise = exercisesData[exerciseName];
+          return (
+            <TouchableOpacity
+              key={exerciseName}
+              style={[styles.progressionItemCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+              onPress={() => setSelectedProgressionItem(exercise)}
+            >
+              <Text style={[styles.progressionItemTitle, { color: theme.colors.text }]}>
+                {exercise.name}
+              </Text>
+              <Text style={[styles.progressionItemSubtitle, { color: theme.colors.textSecondary }]}>
+                {exercise.progression.length} træninger
+              </Text>
+              <View style={styles.progressionItemStats}>
+                <Text style={[styles.progressionItemStat, { color: theme.colors.accent }]}>
+                  {exercise.progression[exercise.progression.length - 1]?.maxWeight || 0} kg max
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    );
+  };
+
   const renderCalendarTab = () => {
     return (
       <View style={styles.tabContent}>
@@ -1069,6 +1641,20 @@ export default function ProgressScreen() {
             Kalender
           </Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'progression' && { backgroundColor: theme.colors.primary + '20' }]}
+          onPress={() => setActiveTab('progression')}
+        >
+          <Ionicons 
+            name={activeTab === 'progression' ? 'trending-up' : 'trending-up-outline'} 
+            size={20} 
+            color={activeTab === 'progression' ? theme.colors.primary : theme.colors.textSecondary} 
+          />
+          <Text style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'progression' && { color: theme.colors.primary, fontWeight: '600' }]}>
+            Progression
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Tab Content */}
@@ -1077,6 +1663,7 @@ export default function ProgressScreen() {
         {activeTab === 'analytics' && renderAnalyticsTab()}
         {activeTab === 'achievements' && renderAchievementsTab()}
         {activeTab === 'calendar' && renderCalendarTab()}
+        {activeTab === 'progression' && renderProgressionTab()}
       </ScrollView>
 
       {/* Workout Details Modal */}
@@ -1534,21 +2121,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingRight: 20,
   },
-  chartContainer: {
-    marginRight: 20,
-    alignItems: 'center',
-  },
-  chartTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  chart: {
-    marginVertical: 8,
-    borderRadius: 16,
-  },
   achievementsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1967,5 +2539,128 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
     marginLeft: 8,
+  },
+  // Progression Styles
+  progressionTabNavigation: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 20,
+    marginHorizontal: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  progressionTabButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  progressionTabText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  progressionContent: {
+    paddingHorizontal: 16,
+  },
+  progressionStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 16,
+  },
+  progressionStatCard: {
+    flex: 1,
+    minWidth: '45%',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  progressionStatValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  progressionStatLabel: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  progressionItemCard: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  progressionItemTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  progressionItemSubtitle: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  progressionItemStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  progressionItemStat: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  chartContainer: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  chartTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  chart: {
+    borderRadius: 16,
+  },
+  emptyState: {
+    alignItems: 'center',
+    padding: 40,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginTop: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
   },
 });

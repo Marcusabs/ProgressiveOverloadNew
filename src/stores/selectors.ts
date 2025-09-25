@@ -30,7 +30,8 @@ export const exerciseSelectors = {
     totalSessions: state.trainingSessions.length,
     totalMuscleGroups: state.muscleGroups.length,
     favoriteSessionType: state.trainingSessions.reduce((acc, session) => {
-      acc[session.type] = (acc[session.type] || 0) + 1;
+      const sessionType = session.type || 'other';
+      acc[sessionType] = (acc[sessionType] || 0) + 1;
       return acc;
     }, {} as Record<string, number>),
   }),
@@ -79,7 +80,7 @@ export const progressSelectors = {
   isLoading: (state: ProgressState) => state.isLoading,
 
   exerciseProgress: (exerciseId: string) => (state: ProgressState) =>
-    state.progressData.filter(data => data.exercise_id === exerciseId),
+    state.progressData.filter(data => data.exerciseId === exerciseId),
 
   recentProgress: (days: number = 30) => (state: ProgressState) => {
     const cutoffDate = new Date();

@@ -81,7 +81,7 @@ const Button = memo<ButtonProps>(({
         activeOpacity={0.8}
       >
         <LinearGradient
-          colors={disabled ? [Colors.neutral[300], Colors.neutral[400]] : Colors.gradients.primary}
+          colors={disabled ? [Colors.neutral[300], Colors.neutral[400]] as const : Colors.gradients.primary}
           style={styles.gradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
@@ -185,9 +185,6 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary[500],
   },
   ghost: {
-    backgroundColor: 'transparent',
-  },
-  gradient: {
     backgroundColor: 'transparent',
   },
 

@@ -43,8 +43,8 @@ export const calculateProgressiveOverload = (
   currentWorkout: ExerciseInWorkout,
   previousWorkouts: Array<{ sets: Set[]; date: Date }>
 ): ProgressiveOverloadSuggestion => {
-  const exerciseName = currentWorkout.exercise.name;
-  const exerciseId = currentWorkout.exerciseId;
+  const exerciseName = currentWorkout.exercise?.name || 'Unknown Exercise';
+  const exerciseId = currentWorkout.exercise_id;
 
   // Get the most recent workout for this exercise
   const lastWorkout = previousWorkouts[0];
@@ -70,12 +70,12 @@ export const calculateProgressiveOverload = (
   ));
 
   // Calculate current workout performance
-  const currentMaxWeight = Math.max(...currentWorkout.sets.map(set => set.weight));
-  const currentMaxReps = Math.max(...currentWorkout.sets.map(set => set.reps));
-  const currentTotalVolume = calculateTotalVolume(currentWorkout.sets);
+  const currentMaxWeight = Math.max(...(currentWorkout.sets || []).map(set => set.weight));
+  const currentMaxReps = Math.max(...(currentWorkout.sets || []).map(set => set.reps));
+  const currentTotalVolume = calculateTotalVolume(currentWorkout.sets || []);
 
   // Progressive overload logic
-  if (currentWorkout.sets.length === 0) {
+  if (!currentWorkout.sets || currentWorkout.sets.length === 0) {
     // No sets completed yet - suggest based on last workout
     if (lastMaxReps >= 12) {
       // Last workout was high reps, increase weight
@@ -174,7 +174,7 @@ export const analyzeWorkout = (
 ): WorkoutAnalysis[] => {
   return exercises.map(exercise => {
     const exercisePreviousWorkouts = previousWorkouts
-      .filter(w => w.exerciseId === exercise.exerciseId)
+      .filter(w => w.exerciseId === exercise.exercise_id)
       .sort((a, b) => b.date.getTime() - a.date.getTime());
 
     const suggestion = calculateProgressiveOverload(exercise, exercisePreviousWorkouts);
@@ -183,7 +183,7 @@ export const analyzeWorkout = (
       ? Math.max(...exercisePreviousWorkouts[0].sets.map(set => set.weight))
       : 0;
     
-    const currentMaxWeight = exercise.sets.length > 0
+    const currentMaxWeight = exercise.sets && exercise.sets.length > 0
       ? Math.max(...exercise.sets.map(set => set.weight))
       : 0;
 
@@ -192,14 +192,14 @@ export const analyzeWorkout = (
       ? (improvement / previousMaxWeight) * 100 
       : 0;
 
-    const totalVolume = calculateTotalVolume(exercise.sets);
-    const oneRepMax = exercise.sets.length > 0
+    const totalVolume = calculateTotalVolume(exercise.sets || []);
+    const oneRepMax = exercise.sets && exercise.sets.length > 0
       ? Math.max(...exercise.sets.map(set => calculateOneRepMax(set.weight, set.reps)))
       : 0;
 
     return {
-      exerciseId: exercise.exerciseId,
-      exerciseName: exercise.exercise.name,
+      exerciseId: exercise.exercise_id,
+      exerciseName: exercise.exercise?.name || 'Unknown Exercise',
       previousMaxWeight,
       currentMaxWeight,
       improvement,

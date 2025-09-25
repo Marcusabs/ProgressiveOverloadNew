@@ -12,6 +12,7 @@ export interface TrainingSession {
   muscle_group_id: string;
   description?: string;
   is_active: boolean;
+  type?: string;
   created_at: string;
 }
 
@@ -24,6 +25,8 @@ export interface Exercise {
   description?: string;
   equipment?: string;
   difficulty: 'beginner' | 'intermediate' | 'advanced';
+  category: string;
+  muscleGroups: string[];
   created_at: string;
 }
 
@@ -53,6 +56,8 @@ export interface Workout {
   duration?: number;
   notes?: string;
   completed: boolean;
+  total_sets?: number;
+  exercise_count?: number;
   created_at: string;
   exercises?: ExerciseInWorkout[];
 }
@@ -64,6 +69,7 @@ export interface ExerciseInWorkout {
   order_index: number;
   completed: boolean;
   sets?: Set[];
+  exercise?: Exercise;
 }
 
 export interface Set {
@@ -119,6 +125,6 @@ export interface UserProfile {
 export type RootTabParamList = {
   Home: undefined;
   Training: { initialTab?: 'sessions' | 'exercises' | 'builder' };
-  Progress: undefined;
+  Progress: { initialTab?: 'overview' | 'analytics' | 'achievements' | 'calendar' | 'progression' };
   Profile: undefined;
 };

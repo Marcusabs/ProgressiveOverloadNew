@@ -98,8 +98,8 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     try {
       const db = getDatabase();
       
-      for (const exercise of workout.exercises) {
-        if (exercise.sets.length === 0) continue;
+      for (const exercise of workout.exercises || []) {
+        if (!exercise.sets || exercise.sets.length === 0) continue;
         
         const maxWeight = Math.max(...exercise.sets.map(set => set.weight));
         const totalVolume = exercise.sets.reduce((total, set) => total + (set.weight * set.reps), 0);
@@ -114,9 +114,9 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
           VALUES (?, ?, ?, ?, ?, ?, ?)
         `, [
           Date.now().toString() + Math.random(),
-          exercise.exerciseId,
+          exercise.exercise_id,
           workout.id,
-          workout.date.toISOString(),
+          workout.date,
           maxWeight,
           totalVolume,
           oneRepMax

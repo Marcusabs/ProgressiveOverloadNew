@@ -44,20 +44,23 @@ export default function WorkoutScreen() {
     const setId = Date.now().toString();
     const set: Set = {
       id: setId,
+      workout_exercise_id: selectedExercise,
+      order_index: (currentWorkout?.exercises?.find(ex => ex.exercise_id === selectedExercise)?.sets?.length || 0) + 1,
       reps,
       weight,
       completed: false,
+      notes: ''
     };
 
     // Add set to exercise
     if (currentWorkout) {
       const updatedWorkout = {
         ...currentWorkout,
-        exercises: currentWorkout.exercises.map(exercise => {
-          if (exercise.exerciseId === selectedExercise) {
+        exercises: currentWorkout.exercises?.map(exercise => {
+          if (exercise.exercise_id === selectedExercise) {
             return {
               ...exercise,
-              sets: [...exercise.sets, set]
+              sets: [...(exercise.sets || []), set]
             };
           }
           return exercise;
@@ -80,9 +83,9 @@ export default function WorkoutScreen() {
   const handleCompleteWorkout = () => {
     if (!currentWorkout) return;
 
-    const totalSets = currentWorkout.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
-    const completedSets = currentWorkout.exercises.reduce((sum, ex) => 
-      sum + ex.sets.filter(set => set.completed).length, 0
+    const totalSets = currentWorkout.exercises?.reduce((sum, ex) => sum + (ex.sets?.length || 0), 0) || 0;
+    const completedSets = currentWorkout.exercises?.reduce((sum, ex) => 
+      sum + (ex.sets?.filter(set => set.completed).length || 0), 0
     );
 
     Alert.alert(
@@ -158,16 +161,16 @@ export default function WorkoutScreen() {
       </LinearGradient>
 
       <ScrollView style={styles.content}>
-        {currentWorkout.exercises.map((exercise, index) => (
+        {currentWorkout.exercises?.map((exercise, index) => (
           <View key={exercise.id} style={styles.exerciseCard}>
             <View style={styles.exerciseHeader}>
-              <Text style={styles.exerciseName}>{exercise.exercise.name}</Text>
-              <Text style={styles.exerciseCategory}>{exercise.exercise.category}</Text>
+              <Text style={styles.exerciseName}>{exercise.exercise?.name}</Text>
+              <Text style={styles.exerciseCategory}>{exercise.exercise?.category}</Text>
             </View>
 
             {/* Sets */}
             <View style={styles.setsContainer}>
-              {exercise.sets.map((set, setIndex) => (
+              {exercise.sets?.map((set, setIndex) => (
                 <View
                   key={set.id}
                   style={[
@@ -183,7 +186,7 @@ export default function WorkoutScreen() {
                       styles.completeButton,
                       set.completed && styles.completedButton
                     ]}
-                    onPress={() => handleCompleteSet(exercise.exerciseId, set.id)}
+                    onPress={() => handleCompleteSet(exercise.exercise_id, set.id)}
                   >
                     <Ionicons
                       name={set.completed ? "checkmark" : "checkmark-outline"}
@@ -198,7 +201,7 @@ export default function WorkoutScreen() {
             {/* Add Set Button */}
             <TouchableOpacity
               style={styles.addSetButton}
-              onPress={() => handleAddSet(exercise.exerciseId)}
+              onPress={() => handleAddSet(exercise.exercise_id)}
             >
               <Ionicons name="add" size={20} color="#007AFF" />
               <Text style={styles.addSetText}>Add Set</Text>

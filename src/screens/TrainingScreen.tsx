@@ -19,7 +19,7 @@ import * as Haptics from 'expo-haptics';
 import { useExerciseStore } from '../stores/exerciseStore';
 import { TrainingSession, Exercise } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
-import { Calendar } from '../components/ui';
+import { Calendar } from 'react-native-calendars';
 
 import { RouteProp } from '@react-navigation/native';
 import { RootTabParamList } from '../types';
@@ -27,7 +27,7 @@ import { RootTabParamList } from '../types';
 type TrainingScreenRouteProp = RouteProp<RootTabParamList, 'Training'>;
 
 export default function TrainingScreen({ route }: { route: TrainingScreenRouteProp }) {
-  const { trainingSessions, exercises, muscleGroups, loadTrainingSessions, loadExercises, loadMuscleGroups, updateExercise, addExercise, deleteExercise, addTrainingSession, updateTrainingSession, deleteTrainingSession, startWorkout, endWorkout, addSetToExercise, updateSetInExercise, deleteSetFromExercise, getProgressiveOverloadSuggestions, currentWorkout, setCurrentWorkout, cleanupIncompleteWorkout } = useExerciseStore();
+  const { trainingSessions, exercises, muscleGroups, workouts, loadTrainingSessions, loadExercises, loadMuscleGroups, updateExercise, addExercise, deleteExercise, addTrainingSession, updateTrainingSession, deleteTrainingSession, startWorkout, endWorkout, addSetToExercise, updateSetInExercise, deleteSetFromExercise, getProgressiveOverloadSuggestions, currentWorkout, setCurrentWorkout, cleanupIncompleteWorkout } = useExerciseStore();
   const { theme, isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'sessions' | 'exercises' | 'builder'>(
     route?.params?.initialTab || 'sessions'
@@ -97,6 +97,8 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
   const [manualCompletedSets, setManualCompletedSets] = useState<Array<{reps: number, weight: number}>>([]);
   const [manualAllExerciseSets, setManualAllExerciseSets] = useState<{[exerciseId: string]: Array<{reps: number, weight: number}>}>({});
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showSessionStats, setShowSessionStats] = useState(false);
+  const [selectedSessionStats, setSelectedSessionStats] = useState<any>(null);
   const [editSessionForm, setEditSessionForm] = useState({
     name: '',
     description: '',
@@ -197,6 +199,84 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
     }
     
     return sessionExercises;
+  };
+
+  // Calculate average duration for a session based on historical data
+  const getAverageSessionDuration = (sessionId: string): number => {
+    try {
+      // Find all completed workouts for this session
+      const sessionWorkouts = workouts.filter(workout => 
+        workout.session_id === sessionId && 
+        workout.completed && 
+        workout.duration && 
+        workout.duration > 0
+      );
+      
+      if (sessionWorkouts.length === 0) {
+        return 60; // Default 60 minutes if no historical data
+      }
+      
+      // Calculate average duration
+      const totalDuration = sessionWorkouts.reduce((sum, workout) => sum + (workout.duration || 0), 0);
+      const averageDuration = Math.round(totalDuration / sessionWorkouts.length);
+      
+      return averageDuration;
+    } catch (error) {
+      console.error('Error calculating average session duration:', error);
+      return 60; // Default fallback
+    }
+  };
+
+  // Get comprehensive session statistics
+  const getSessionStatistics = (sessionId: string) => {
+    try {
+      const sessionWorkouts = workouts.filter(workout => 
+        workout.session_id === sessionId && 
+        workout.completed
+      );
+      
+      if (sessionWorkouts.length === 0) {
+        return {
+          totalWorkouts: 0,
+          averageDuration: 0,
+          totalDuration: 0,
+          lastWorkout: null,
+          averageSets: 0,
+          totalSets: 0
+        };
+      }
+      
+      const durations = sessionWorkouts
+        .filter(w => w.duration && w.duration > 0)
+        .map(w => w.duration);
+      
+      const averageDuration = durations.length > 0 
+        ? Math.round(durations.reduce((sum: number, dur: number | undefined) => sum + (dur || 0), 0) / durations.length)
+        : 0;
+      
+      const totalDuration = durations.reduce((sum, dur) => (sum || 0) + (dur || 0), 0);
+      
+      const lastWorkout = sessionWorkouts
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+      
+      const averageSets = sessionWorkouts.length > 0
+        ? Math.round(sessionWorkouts.reduce((sum, w) => (sum || 0) + (w.total_sets || 0), 0) / sessionWorkouts.length)
+        : 0;
+      
+      const totalSets = sessionWorkouts.reduce((sum, w) => (sum || 0) + (w.total_sets || 0), 0);
+      
+      return {
+        totalWorkouts: sessionWorkouts.length,
+        averageDuration,
+        totalDuration,
+        lastWorkout,
+        averageSets,
+        totalSets
+      };
+    } catch (error) {
+      console.error('Error calculating session statistics:', error);
+      return null;
+    }
   };
 
   const handleViewExercise = (exercise: Exercise) => {
@@ -665,8 +745,8 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
         return acc;
       }, {});
 
-      const lastWorkoutDate = Object.keys(workoutsByDate)[0];
-      const lastWorkoutSets = workoutsByDate[lastWorkoutDate] || [];
+      const lastWorkoutDate = Object.keys(workoutsByDate as Record<string, any>)[0];
+      const lastWorkoutSets = (workoutsByDate as Record<string, any>)[lastWorkoutDate] || [];
       
       const lastMaxWeight = lastWorkoutSets.length > 0 ? Math.max(...lastWorkoutSets.map((s: any) => s.weight)) : 0;
       const lastMaxReps = lastWorkoutSets.length > 0 ? Math.max(...lastWorkoutSets.map((s: any) => s.reps)) : 0;
@@ -868,6 +948,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
       });
 
       // Update exercises - remove old ones and add new ones
+      const { getDatabase } = await import('../database');
       const db = getDatabase();
       
       // Remove all exercises from this session
@@ -985,6 +1066,8 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
         muscle_group_id: createExerciseForm.muscle_group_id,
         equipment: '',
         difficulty: 'intermediate',
+        category: 'General',
+        muscleGroups: [],
         order_index: 0
       });
       
@@ -1767,7 +1850,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                             <Ionicons name="chevron-down" size={16} color={theme.colors.primary} />
                           </TouchableOpacity>
                         </View>
-                        <Text style={[styles.selectedExerciseText, { color: theme.colors.text }]}>{item.name}</Text>
+                        <Text style={[styles.exerciseSelectionText, { color: theme.colors.text }]}>{item.name}</Text>
                         <TouchableOpacity onPress={() => handleRemoveExerciseFromSession(item.id)}>
                           <Ionicons name="close-circle" size={20} color={theme.colors.accent} />
                         </TouchableOpacity>
@@ -2356,7 +2439,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                     key={exercise.id}
                     style={[
                       styles.exerciseSelectionItem,
-                      editSessionForm.selectedExercises.find(ex => ex.id === exercise.id) && styles.selectedExercise
+                      editSessionForm.selectedExercises.find(ex => ex.id === exercise.id) && styles.selectedExerciseItem
                     ]}
                     onPress={() => toggleExerciseSelection(exercise)}
                   >
@@ -2495,37 +2578,53 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
 
             {manualWorkoutStep === 'setup' ? (
               /* Setup Phase - Simple Session Selection */
-              <ScrollView style={styles.trainingContent}>
+              <ScrollView style={styles.modalContent}>
                 <View style={styles.setupContainer}>
                   <Text style={[styles.setupTitle, { color: theme.colors.text }]}>Vælg Session</Text>
                   
                   {trainingSessions && trainingSessions.length > 0 ? (
                     <View style={styles.sessionList}>
                       {trainingSessions.map((session) => (
-                        <TouchableOpacity
-                          key={session.id}
-                          style={[
-                            styles.sessionOptionCard,
-                            { backgroundColor: theme.colors.card },
-                            manualWorkoutData.sessionId === session.id && { 
-                              backgroundColor: theme.colors.primary,
-                              borderColor: theme.colors.primary
-                            }
-                          ]}
-                          onPress={() => setManualWorkoutData({ 
-                            ...manualWorkoutData, 
-                            sessionId: session.id, 
-                            sessionName: session.name 
-                          })}
-                        >
-                          <Text style={[
-                            styles.sessionOptionText,
-                            { color: theme.colors.text },
-                            manualWorkoutData.sessionId === session.id && { color: '#fff', fontWeight: 'bold' }
-                          ]}>
-                            {session.name}
-                          </Text>
-                        </TouchableOpacity>
+                        <View key={session.id} style={styles.sessionCardContainer}>
+                          <TouchableOpacity
+                            style={[
+                              styles.sessionOptionCard,
+                              { backgroundColor: theme.colors.card },
+                              manualWorkoutData.sessionId === session.id && { 
+                                backgroundColor: theme.colors.primary,
+                                borderColor: theme.colors.primary
+                              }
+                            ]}
+                            onPress={() => {
+                              const averageDuration = getAverageSessionDuration(session.id);
+                              setManualWorkoutData({ 
+                                ...manualWorkoutData, 
+                                sessionId: session.id, 
+                                sessionName: session.name,
+                                duration: averageDuration.toString()
+                              });
+                            }}
+                          >
+                            <Text style={[
+                              styles.sessionOptionText,
+                              { color: theme.colors.text },
+                              manualWorkoutData.sessionId === session.id && { color: '#fff', fontWeight: 'bold' }
+                            ]}>
+                              {session.name}
+                            </Text>
+                          </TouchableOpacity>
+                          
+                          <TouchableOpacity
+                            style={[styles.sessionStatsButton, { backgroundColor: theme.colors.secondary }]}
+                            onPress={() => {
+                              const stats = getSessionStatistics(session.id);
+                              setSelectedSessionStats({ ...stats, sessionName: session.name });
+                              setShowSessionStats(true);
+                            }}
+                          >
+                            <Ionicons name="stats-chart" size={16} color="#fff" />
+                          </TouchableOpacity>
+                        </View>
                       ))}
                     </View>
                   ) : (
@@ -2576,13 +2675,13 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
               </ScrollView>
             ) : (
               /* Training Phase - Exact copy of live training but without timer */
-              <ScrollView style={styles.trainingContent}>
+              <ScrollView style={styles.modalContent}>
                 {/* Current Exercise Info */}
                 <View style={styles.currentExerciseSection}>
-                  <Text style={[styles.exerciseCounter, { color: theme.colors.primary }]}>
+                  <Text style={[styles.exerciseCount, { color: theme.colors.primary }]}>
                     Øvelse {manualCurrentExerciseIndex + 1} af {manualWorkoutData.exercises.length}
                   </Text>
-                  <Text style={[styles.currentExerciseName, { color: theme.colors.text }]}>
+                  <Text style={[styles.currentExerciseTitle, { color: theme.colors.text }]}>
                     {manualWorkoutData.exercises[manualCurrentExerciseIndex]?.name}
                   </Text>
                 </View>
@@ -2593,15 +2692,15 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                     Fuldførte Sæt ({manualCompletedSets.length})
                   </Text>
                   {manualCompletedSets.map((set, index) => (
-                    <View key={index} style={[styles.completedSet, { backgroundColor: theme.colors.card }]}>
+                    <View key={index} style={[styles.completedSetItem, { backgroundColor: theme.colors.card }]}>
                       <Text style={[styles.setNumber, { color: theme.colors.textSecondary }]}>#{index + 1}</Text>
-                      <Text style={[styles.setData, { color: theme.colors.text }]}>
+                      <Text style={[styles.setInfo, { color: theme.colors.text }]}>
                         {set.weight} kg × {set.reps} reps
                       </Text>
                     </View>
                   ))}
                   {manualCompletedSets.length === 0 && (
-                    <Text style={[styles.noSetsText, { color: theme.colors.textTertiary }]}>
+                    <Text style={[styles.currentExerciseTitle, { color: theme.colors.textTertiary }]}>
                       Ingen sæt endnu
                     </Text>
                   )}
@@ -2610,11 +2709,11 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                 {/* Add New Set */}
                 <View style={styles.addSetSection}>
                   <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Tilføj Nyt Sæt</Text>
-                  <View style={styles.setInputsRow}>
-                    <View style={styles.setInputGroup}>
-                      <Text style={[styles.setInputLabel, { color: theme.colors.textSecondary }]}>Vægt (kg)</Text>
+                  <View style={styles.setInputRow}>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>Vægt (kg)</Text>
                       <TextInput
-                        style={[styles.setInputField, { backgroundColor: theme.colors.background, color: theme.colors.text }]}
+                        style={[styles.setInput, { backgroundColor: theme.colors.background, color: theme.colors.text }]}
                         value={manualCurrentSet.weight}
                         onChangeText={(text) => setManualCurrentSet({ ...manualCurrentSet, weight: text })}
                         placeholder="0"
@@ -2622,10 +2721,10 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                         placeholderTextColor={theme.colors.textTertiary}
                       />
                     </View>
-                    <View style={styles.setInputGroup}>
-                      <Text style={[styles.setInputLabel, { color: theme.colors.textSecondary }]}>Reps</Text>
+                    <View style={styles.inputGroup}>
+                      <Text style={[styles.inputLabel, { color: theme.colors.textSecondary }]}>Reps</Text>
                       <TextInput
-                        style={[styles.setInputField, { backgroundColor: theme.colors.background, color: theme.colors.text }]}
+                        style={[styles.setInput, { backgroundColor: theme.colors.background, color: theme.colors.text }]}
                         value={manualCurrentSet.reps}
                         onChangeText={(text) => setManualCurrentSet({ ...manualCurrentSet, reps: text })}
                         placeholder="0"
@@ -2704,51 +2803,83 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
               </TouchableOpacity>
             </View>
 
-            {/* Quick Date Options */}
-            <View style={styles.quickDateOptions}>
-              <TouchableOpacity
-                style={[styles.quickDateButton, { backgroundColor: theme.colors.primary }]}
-                onPress={() => {
-                  setManualWorkoutData({ ...manualWorkoutData, date: new Date().toISOString().split('T')[0] });
-                  setShowDatePicker(false);
-                }}
-              >
-                <Text style={styles.quickDateButtonText}>I dag</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.quickDateButton, { backgroundColor: theme.colors.secondary }]}
-                onPress={() => {
-                  const yesterday = new Date();
-                  yesterday.setDate(yesterday.getDate() - 1);
-                  setManualWorkoutData({ ...manualWorkoutData, date: yesterday.toISOString().split('T')[0] });
-                  setShowDatePicker(false);
-                }}
-              >
-                <Text style={styles.quickDateButtonText}>I går</Text>
-              </TouchableOpacity>
-            </View>
+            <ScrollView style={styles.datePickerScrollView} showsVerticalScrollIndicator={false}>
+              {/* Quick Date Options */}
+              <View style={styles.quickDateOptions}>
+                <TouchableOpacity
+                  style={[styles.quickDateButton, { backgroundColor: theme.colors.primary }]}
+                  onPress={() => {
+                    setManualWorkoutData({ ...manualWorkoutData, date: new Date().toISOString().split('T')[0] });
+                    setShowDatePicker(false);
+                  }}
+                >
+                  <Text style={styles.quickDateButtonText}>I dag</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.quickDateButton, { backgroundColor: theme.colors.secondary }]}
+                  onPress={() => {
+                    const yesterday = new Date();
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    setManualWorkoutData({ ...manualWorkoutData, date: yesterday.toISOString().split('T')[0] });
+                    setShowDatePicker(false);
+                  }}
+                >
+                  <Text style={styles.quickDateButtonText}>I går</Text>
+                </TouchableOpacity>
+              </View>
 
-            {/* Calendar Component */}
-            <Calendar
-              selectedDate={manualWorkoutData.date}
-              onDateSelect={(date) => {
-                setManualWorkoutData({ ...manualWorkoutData, date });
-                setShowDatePicker(false);
-              }}
-              theme={theme}
-            />
+              {/* Calendar Component */}
+              <View style={[styles.calendarContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+                <Calendar
+                  onDayPress={(day) => {
+                    setManualWorkoutData({ ...manualWorkoutData, date: day.dateString });
+                    setShowDatePicker(false);
+                  }}
+                  markedDates={{
+                    [manualWorkoutData.date]: {
+                      selected: true,
+                      selectedColor: theme.colors.primary,
+                      selectedTextColor: '#ffffff'
+                    }
+                  }}
+                  theme={{
+                    backgroundColor: theme.colors.card,
+                    calendarBackground: theme.colors.card,
+                    textSectionTitleColor: theme.colors.textSecondary,
+                    selectedDayBackgroundColor: theme.colors.primary,
+                    selectedDayTextColor: '#ffffff',
+                    todayTextColor: theme.colors.primary,
+                    dayTextColor: theme.colors.text,
+                    textDisabledColor: theme.colors.textTertiary,
+                    dotColor: theme.colors.primary,
+                    selectedDotColor: '#ffffff',
+                    arrowColor: theme.colors.primary,
+                    monthTextColor: theme.colors.text,
+                    textDayFontFamily: 'System',
+                    textMonthFontFamily: 'System',
+                    textDayHeaderFontFamily: 'System',
+                    textDayFontWeight: '300',
+                    textMonthFontWeight: 'bold',
+                    textDayHeaderFontWeight: '500',
+                    textDayFontSize: 16,
+                    textMonthFontSize: 16,
+                    textDayHeaderFontSize: 14
+                  }}
+                />
+              </View>
 
-            {/* Manual Date Input */}
-            <View style={styles.manualDateInput}>
-              <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Eller indtast dato:</Text>
-              <TextInput
-                style={[styles.setupInput, { backgroundColor: theme.colors.card, color: theme.colors.text, borderColor: theme.colors.border }]}
-                value={manualWorkoutData.date}
-                onChangeText={(text) => setManualWorkoutData({ ...manualWorkoutData, date: text })}
-                placeholder="2024-01-15"
-                placeholderTextColor={theme.colors.textTertiary}
-              />
-            </View>
+              {/* Manual Date Input */}
+              <View style={styles.manualDateInput}>
+                <Text style={[styles.inputLabel, { color: theme.colors.text }]}>Eller indtast dato:</Text>
+                <TextInput
+                  style={[styles.setupInput, { backgroundColor: theme.colors.card, color: theme.colors.text, borderColor: theme.colors.border }]}
+                  value={manualWorkoutData.date}
+                  onChangeText={(text) => setManualWorkoutData({ ...manualWorkoutData, date: text })}
+                  placeholder="2024-01-15"
+                  placeholderTextColor={theme.colors.textTertiary}
+                />
+              </View>
+            </ScrollView>
 
             {/* Close Button */}
             <TouchableOpacity
@@ -2757,6 +2888,145 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
             >
               <Text style={styles.confirmButtonText}>Luk</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Session Statistics Modal */}
+      <Modal
+        visible={showSessionStats}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSessionStats(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
+                Statistikker - {selectedSessionStats?.sessionName}
+              </Text>
+              <TouchableOpacity
+                style={styles.backButton}
+                onPress={() => setShowSessionStats(false)}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+              {selectedSessionStats && (
+                <View style={styles.statsContainer}>
+                  {selectedSessionStats.totalWorkouts === 0 ? (
+                    <View style={styles.noDataContainer}>
+                      <Ionicons name="stats-chart-outline" size={48} color={theme.colors.textTertiary} />
+                      <Text style={[styles.noDataText, { color: theme.colors.text }]}>
+                        Ingen træningsdata endnu
+                      </Text>
+                      <Text style={[styles.noDataSubtext, { color: theme.colors.textSecondary }]}>
+                        Start med at lave træninger for at se statistikker
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      {/* Overview Stats */}
+                      <View style={[styles.statsSection, { backgroundColor: theme.colors.card }]}>
+                        <Text style={[styles.statsSectionTitle, { color: theme.colors.text }]}>Overblik</Text>
+                        <View style={styles.statsGrid}>
+                          <View style={styles.statItem}>
+                            <Text style={[styles.statValue, { color: theme.colors.primary }]}>
+                              {selectedSessionStats.totalWorkouts}
+                            </Text>
+                            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
+                              Træninger
+                            </Text>
+                          </View>
+                          <View style={styles.statItem}>
+                            <Text style={[styles.statValue, { color: theme.colors.secondary }]}>
+                              {selectedSessionStats.averageDuration} min
+                            </Text>
+                            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
+                              Gennemsnit
+                            </Text>
+                          </View>
+                          <View style={styles.statItem}>
+                            <Text style={[styles.statValue, { color: theme.colors.accent }]}>
+                              {selectedSessionStats.totalSets}
+                            </Text>
+                            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
+                              Sæt totalt
+                            </Text>
+                          </View>
+                          <View style={styles.statItem}>
+                            <Text style={[styles.statValue, { color: theme.colors.primary }]}>
+                              {selectedSessionStats.averageSets}
+                            </Text>
+                            <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>
+                              Sæt/session
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Duration Stats */}
+                      <View style={[styles.statsSection, { backgroundColor: theme.colors.card }]}>
+                        <Text style={[styles.statsSectionTitle, { color: theme.colors.text }]}>Varighed</Text>
+                        <View style={styles.durationStats}>
+                          <View style={styles.durationItem}>
+                            <Ionicons name="time-outline" size={20} color={theme.colors.primary} />
+                            <View style={styles.durationInfo}>
+                              <Text style={[styles.durationValue, { color: theme.colors.text }]}>
+                                {selectedSessionStats.averageDuration} minutter
+                              </Text>
+                              <Text style={[styles.durationLabel, { color: theme.colors.textSecondary }]}>
+                                Gennemsnitlig varighed
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={styles.durationItem}>
+                            <Ionicons name="timer-outline" size={20} color={theme.colors.secondary} />
+                            <View style={styles.durationInfo}>
+                              <Text style={[styles.durationValue, { color: theme.colors.text }]}>
+                                {Math.round(selectedSessionStats.totalDuration / 60)} timer
+                              </Text>
+                              <Text style={[styles.durationLabel, { color: theme.colors.textSecondary }]}>
+                                Total træningstid
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Last Workout */}
+                      {selectedSessionStats.lastWorkout && (
+                        <View style={[styles.statsSection, { backgroundColor: theme.colors.card }]}>
+                          <Text style={[styles.statsSectionTitle, { color: theme.colors.text }]}>Sidste Træning</Text>
+                          <View style={styles.lastWorkoutInfo}>
+                            <View style={styles.lastWorkoutRow}>
+                              <Ionicons name="calendar-outline" size={16} color={theme.colors.textSecondary} />
+                              <Text style={[styles.lastWorkoutText, { color: theme.colors.text }]}>
+                                {new Date(selectedSessionStats.lastWorkout.date).toLocaleDateString('da-DK')}
+                              </Text>
+                            </View>
+                            <View style={styles.lastWorkoutRow}>
+                              <Ionicons name="time-outline" size={16} color={theme.colors.textSecondary} />
+                              <Text style={[styles.lastWorkoutText, { color: theme.colors.text }]}>
+                                {selectedSessionStats.lastWorkout.duration} minutter
+                              </Text>
+                            </View>
+                            <View style={styles.lastWorkoutRow}>
+                              <Ionicons name="fitness-outline" size={16} color={theme.colors.textSecondary} />
+                              <Text style={[styles.lastWorkoutText, { color: theme.colors.text }]}>
+                                {selectedSessionStats.lastWorkout.total_sets || 0} sæt
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      )}
+                    </>
+                  )}
+                </View>
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -3395,10 +3665,10 @@ const styles = StyleSheet.create({
     marginTop: 24,
     marginBottom: 20,
     paddingVertical: 20,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     backgroundColor: 'rgba(255, 107, 53, 0.05)',
     borderRadius: 16,
-    marginHorizontal: 16,
+    marginHorizontal: 20,
     borderWidth: 1,
     borderColor: 'rgba(255, 107, 53, 0.1)',
   },
@@ -3412,12 +3682,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
-    paddingHorizontal: 20,
+    gap: 12,
+    paddingHorizontal: 0,
   },
   inputGroup: {
     flex: 1,
     alignItems: 'center',
+    minWidth: 80,
+    maxWidth: 100,
   },
   inputLabel: {
     fontSize: 16,
@@ -3428,12 +3700,13 @@ const styles = StyleSheet.create({
   setInput: {
     borderWidth: 2,
     borderRadius: 12,
-    padding: 16,
-    fontSize: 20,
+    padding: 12,
+    fontSize: 18,
     fontWeight: '600',
     textAlign: 'center',
-    minHeight: 56,
+    minHeight: 48,
     width: '100%',
+    minWidth: 80,
   },
   addSetButton: {
     padding: 16,
@@ -3539,10 +3812,6 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 4,
   },
-  modalScrollView: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
   debugText: {
     fontSize: 12,
     fontStyle: 'italic',
@@ -3569,28 +3838,6 @@ const styles = StyleSheet.create({
   },
   selectedMuscleGroup: {
     backgroundColor: '#007AFF',
-  },
-  exerciseSelectionContainer: {
-    maxHeight: 200,
-    marginBottom: 20,
-  },
-  exerciseSelectionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-    marginBottom: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  selectedExercise: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
-  },
-  exerciseSelectionText: {
-    fontSize: 14,
-    flex: 1,
   },
   // Progressive Overload Styles
   progressiveOverloadSection: {
@@ -3915,9 +4162,6 @@ const styles = StyleSheet.create({
   setupInputs: {
     marginBottom: 30,
   },
-  inputGroup: {
-    marginBottom: 15,
-  },
   setupInput: {
     padding: 15,
     borderRadius: 8,
@@ -3965,7 +4209,11 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '90%',
     maxWidth: 400,
+    maxHeight: '80%',
     alignSelf: 'center',
+  },
+  datePickerScrollView: {
+    maxHeight: 400,
   },
   quickDateOptions: {
     flexDirection: 'row',
@@ -4015,5 +4263,105 @@ const styles = StyleSheet.create({
   },
   manualDateInput: {
     marginBottom: 15,
+  },
+  calendarContainer: {
+    borderRadius: 12,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  // Session Statistics Styles
+  sessionCardContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  sessionStatsButton: {
+    padding: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 36,
+    minHeight: 36,
+  },
+  statsContainer: {
+    padding: 16,
+  },
+  noDataContainer: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  noDataText: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  noDataSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  statsSection: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  statsSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  statItem: {
+    flex: 1,
+    minWidth: '45%',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  durationStats: {
+    gap: 12,
+  },
+  durationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  durationInfo: {
+    flex: 1,
+  },
+  durationValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  durationLabel: {
+    fontSize: 12,
+  },
+  lastWorkoutInfo: {
+    gap: 8,
+  },
+  lastWorkoutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  lastWorkoutText: {
+    fontSize: 14,
   },
 });

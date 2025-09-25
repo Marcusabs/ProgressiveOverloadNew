@@ -4,6 +4,9 @@ import { getDatabase } from '../database';
 
 export interface ExerciseState {
   exercises: Exercise[];
+  filteredExercises: Exercise[];
+  searchQuery: string;
+  selectedCategory: string;
   muscleGroups: MuscleGroup[];
   trainingSessions: TrainingSession[];
   selectedSession: TrainingSession | null;
@@ -37,10 +40,15 @@ export interface ExerciseState {
   saveWorkoutProgress: (workoutId: string) => Promise<void>;
   cleanupIncompleteWorkout: (workoutId: string) => Promise<void>;
   cleanupAllIncompleteWorkouts: () => Promise<void>;
+  searchExercises: (query: string) => void;
+  filterByCategory: (category: string) => void;
 }
 
 export const useExerciseStore = create<ExerciseState>((set, get) => ({
   exercises: [],
+  filteredExercises: [],
+  searchQuery: '',
+  selectedCategory: 'All',
   muscleGroups: [],
   trainingSessions: [],
   selectedSession: null,
@@ -69,6 +77,8 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         description: row.description,
         equipment: row.equipment,
         difficulty: row.difficulty,
+        category: row.category || 'General',
+        muscleGroups: row.muscleGroups ? JSON.parse(row.muscleGroups) : [],
         created_at: row.created_at
       }));
       
@@ -943,5 +953,49 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
     } catch (error) {
       console.error('❌ Failed to cleanup incomplete workouts:', error);
     }
+  },
+
+  searchExercises: (query: string) => {
+    set({ searchQuery: query });
+    const { exercises, selectedCategory } = get();
+    
+    let filtered = exercises;
+    
+    // Filter by category
+    if (selectedCategory && selectedCategory !== 'All') {
+      filtered = filtered.filter(exercise => exercise.category === selectedCategory);
+    }
+    
+    // Filter by search query
+    if (query) {
+      filtered = filtered.filter(exercise =>
+        exercise.name.toLowerCase().includes(query.toLowerCase()) ||
+        exercise.description?.toLowerCase().includes(query.toLowerCase())
+      );
+    }
+    
+    set({ filteredExercises: filtered });
+  },
+
+  filterByCategory: (category: string) => {
+    set({ selectedCategory: category });
+    const { exercises, searchQuery } = get();
+    
+    let filtered = exercises;
+    
+    // Filter by category
+    if (category && category !== 'All') {
+      filtered = filtered.filter(exercise => exercise.category === category);
+    }
+    
+    // Filter by search query
+    if (searchQuery) {
+      filtered = filtered.filter(exercise =>
+        exercise.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        exercise.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    set({ filteredExercises: filtered });
   }
 }));
