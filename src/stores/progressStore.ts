@@ -75,10 +75,12 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       const db = getDatabase();
       const workouts = await db.getAllAsync(`
         SELECT w.*, 
-               COUNT(we.id) as exercise_count,
-               SUM(CASE WHEN we.completed = 1 THEN 1 ELSE 0 END) as completed_exercises
+               COUNT(DISTINCT we.id) as exercise_count,
+               SUM(CASE WHEN we.completed = 1 THEN 1 ELSE 0 END) as completed_exercises,
+               COUNT(s.id) as total_sets
         FROM workouts w
         LEFT JOIN workout_exercises we ON w.id = we.workout_id
+        LEFT JOIN sets s ON we.id = s.workout_exercise_id
         WHERE w.completed = 1
         GROUP BY w.id
         ORDER BY w.date DESC

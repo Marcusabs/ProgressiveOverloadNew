@@ -35,6 +35,8 @@ export interface ExerciseState {
   getExercisesBySession: (sessionId: string) => Exercise[];
   getExercisesByMuscleGroup: (muscleGroupId: string) => Exercise[];
   saveWorkoutProgress: (workoutId: string) => Promise<void>;
+  cleanupIncompleteWorkout: (workoutId: string) => Promise<void>;
+  cleanupAllIncompleteWorkouts: () => Promise<void>;
 }
 
 export const useExerciseStore = create<ExerciseState>((set, get) => ({
@@ -418,9 +420,16 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
     try {
       const db = getDatabase();
       const result = await db.getAllAsync(`
-        SELECT w.*, ts.name as session_name, ts.muscle_group_id
+        SELECT w.*, 
+               ts.name as session_name, 
+               ts.muscle_group_id,
+               COUNT(DISTINCT we.id) as exercise_count,
+               COUNT(s.id) as total_sets
         FROM workouts w
         LEFT JOIN training_sessions ts ON w.session_id = ts.id
+        LEFT JOIN workout_exercises we ON w.id = we.workout_id
+        LEFT JOIN sets s ON we.id = s.workout_exercise_id
+        GROUP BY w.id
         ORDER BY w.date DESC
       `);
       
@@ -866,6 +875,73 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       await useAchievementsStore.getState().checkAchievements();
     } catch (error) {
       console.error('❌ Failed to save workout progress:', error);
+    }
+  },
+
+  cleanupIncompleteWorkout: async (workoutId) => {
+    try {
+      const db = getDatabase();
+      
+      console.log('🧹 Cleaning up incomplete workout:', workoutId);
+      
+      // Delete all sets for this workout
+      await db.runAsync(`
+        DELETE FROM sets 
+        WHERE workout_exercise_id IN (
+          SELECT id FROM workout_exercises WHERE workout_id = ?
+        )
+      `, [workoutId]);
+      
+      // Delete workout_exercises
+      await db.runAsync(`
+        DELETE FROM workout_exercises WHERE workout_id = ?
+      `, [workoutId]);
+      
+      // Delete the workout itself (if it exists)
+      await db.runAsync(`
+        DELETE FROM workouts WHERE id = ? AND completed = 0
+      `, [workoutId]);
+      
+      console.log('✅ Workout cleanup completed for:', workoutId);
+    } catch (error) {
+      console.error('❌ Failed to cleanup incomplete workout:', error);
+    }
+  },
+
+  cleanupAllIncompleteWorkouts: async () => {
+    try {
+      const db = getDatabase();
+      
+      console.log('🧹 Cleaning up all incomplete workouts...');
+      
+      // Find all incomplete workouts (completed = 0 or NULL)
+      const incompleteWorkouts = await db.getAllAsync(`
+        SELECT id FROM workouts WHERE completed = 0 OR completed IS NULL
+      `);
+      
+      for (const workout of incompleteWorkouts as any[]) {
+        // Delete sets for each incomplete workout
+        await db.runAsync(`
+          DELETE FROM sets 
+          WHERE workout_exercise_id IN (
+            SELECT id FROM workout_exercises WHERE workout_id = ?
+          )
+        `, [workout.id]);
+        
+        // Delete workout_exercises
+        await db.runAsync(`
+          DELETE FROM workout_exercises WHERE workout_id = ?
+        `, [workout.id]);
+      }
+      
+      // Delete all incomplete workouts
+      await db.runAsync(`
+        DELETE FROM workouts WHERE completed = 0 OR completed IS NULL
+      `);
+      
+      console.log(`✅ Cleaned up ${incompleteWorkouts.length} incomplete workouts`);
+    } catch (error) {
+      console.error('❌ Failed to cleanup incomplete workouts:', error);
     }
   }
 }));

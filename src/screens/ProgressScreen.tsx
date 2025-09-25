@@ -8,19 +8,27 @@ import {
   Platform,
   StatusBar,
   Image,
+  Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
 import { Calendar } from 'react-native-calendars';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { RootTabParamList } from '../types';
 import { useExerciseStore } from '../stores/exerciseStore';
 import { useProgressStore } from '../stores/progressStore';
 import { useAchievementsStore } from '../stores/achievementsStore';
 import { useTheme } from '../contexts/ThemeContext';
 
+type ProgressScreenNavigationProp = BottomTabNavigationProp<RootTabParamList, 'Progress'>;
+
 export default function ProgressScreen() {
+  const navigation = useNavigation<ProgressScreenNavigationProp>();
   const { exercises, trainingSessions, workouts } = useExerciseStore();
   const { progressData, getRecentWorkouts } = useProgressStore();
   const { achievements, userStats, loadAchievements, loadUserStats, checkAchievements, getAchievementsByCategory, getUnlockedAchievements } = useAchievementsStore();
@@ -31,6 +39,10 @@ export default function ProgressScreen() {
   const [heatMapData, setHeatMapData] = useState<Record<string, any>>({});
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedDateWorkouts, setSelectedDateWorkouts] = useState<any[]>([]);
+  const [showWorkoutDetailsModal, setShowWorkoutDetailsModal] = useState(false);
+  const [selectedWorkout, setSelectedWorkout] = useState<any>(null);
+  const [editingWorkout, setEditingWorkout] = useState(false);
+  const [workoutSets, setWorkoutSets] = useState<any[]>([]);
   const screenWidth = Dimensions.get('window').width;
 
   useEffect(() => {
@@ -69,6 +81,95 @@ export default function ProgressScreen() {
     }
   };
 
+  const handleWorkoutPress = async (workout: any) => {
+    try {
+      setSelectedWorkout(workout);
+      
+      // Load workout details including sets
+      const { getDatabase } = await import('../database');
+      const db = getDatabase();
+      
+      const sets = await db.getAllAsync(`
+        SELECT s.*, e.name as exercise_name, we.exercise_id
+        FROM sets s
+        JOIN workout_exercises we ON s.workout_exercise_id = we.id
+        JOIN exercises e ON we.exercise_id = e.id
+        WHERE we.workout_id = ?
+        ORDER BY we.order_index, s.order_index
+      `, [workout.id]);
+      
+      setWorkoutSets(sets);
+      setShowWorkoutDetailsModal(true);
+    } catch (error) {
+      console.error('Error loading workout details:', error);
+    }
+  };
+
+  const handleDeleteWorkout = async () => {
+    if (!selectedWorkout) return;
+    
+    Alert.alert(
+      'Slet Træning',
+      `Er du sikker på at du vil slette træningen "${selectedWorkout.name}"? Denne handling kan ikke fortrydes.`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        { 
+          text: 'Slet', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { deleteWorkout } = useExerciseStore.getState();
+              await deleteWorkout(selectedWorkout.id);
+              
+              // Refresh data
+              await loadData();
+              
+              // Close modal and update selected date workouts
+              setShowWorkoutDetailsModal(false);
+              if (selectedDate) {
+                const updatedWorkouts = workouts.filter(w => w.date === selectedDate && w.id !== selectedWorkout.id);
+                setSelectedDateWorkouts(updatedWorkouts);
+              }
+              
+              Alert.alert('Succes', 'Træningen blev slettet');
+            } catch (error) {
+              console.error('Error deleting workout:', error);
+              Alert.alert('Fejl', 'Kunne ikke slette træningen');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleUpdateSet = async (setId: string, newReps: number, newWeight: number) => {
+    try {
+      const { getDatabase } = await import('../database');
+      const db = getDatabase();
+      
+      await db.runAsync(`
+        UPDATE sets SET reps = ?, weight = ? WHERE id = ?
+      `, [newReps, newWeight, setId]);
+      
+      // Update local state
+      setWorkoutSets(prevSets => 
+        prevSets.map(set => 
+          set.id === setId 
+            ? { ...set, reps: newReps, weight: newWeight }
+            : set
+        )
+      );
+      
+      // Refresh data to update calendar
+      await loadData();
+      
+      Alert.alert('Succes', 'Sæt opdateret!');
+    } catch (error) {
+      console.error('Error updating set:', error);
+      Alert.alert('Fejl', 'Kunne ikke opdatere sæt');
+    }
+  };
+
   const calculateHeatMapData = () => {
     const heatMap: Record<string, any> = {};
     
@@ -85,19 +186,46 @@ export default function ProgressScreen() {
     // Calculate intensity for each date
     Object.keys(workoutsByDate).forEach(date => {
       const dayWorkouts = workoutsByDate[date];
+      let totalDuration = 0;
+      let totalExercises = 0;
       let totalSets = 0;
       
       dayWorkouts.forEach(workout => {
-        // Count sets from workout - use exercise_count or default to 1
-        totalSets += workout.exercise_count || 1;
+        totalDuration += workout.duration || 0;
+        totalExercises += workout.exercise_count || 0;
+        totalSets += workout.total_sets || 0;
       });
       
-      // Determine intensity level (0-4)
+      // Calculate intensity based on multiple factors
       let intensity = 0;
-      if (totalSets >= 3) intensity = 4; // High intensity
-      else if (totalSets >= 2) intensity = 3; // Medium-high
-      else if (totalSets >= 1) intensity = 2; // Medium
-      else intensity = 1; // Low
+      
+      // Factor 1: Duration (minutes)
+      let durationScore = 0;
+      if (totalDuration >= 90) durationScore = 3;
+      else if (totalDuration >= 60) durationScore = 2;
+      else if (totalDuration >= 30) durationScore = 1;
+      
+      // Factor 2: Number of exercises
+      let exerciseScore = 0;
+      if (totalExercises >= 8) exerciseScore = 3;
+      else if (totalExercises >= 5) exerciseScore = 2;
+      else if (totalExercises >= 3) exerciseScore = 1;
+      
+      // Factor 3: Total sets (if available)
+      let setScore = 0;
+      if (totalSets >= 20) setScore = 3;
+      else if (totalSets >= 12) setScore = 2;
+      else if (totalSets >= 6) setScore = 1;
+      
+      // Calculate weighted intensity (0-4)
+      // Duration is most important, then exercises, then sets
+      const weightedScore = (durationScore * 0.5) + (exerciseScore * 0.3) + (setScore * 0.2);
+      
+      if (weightedScore >= 2.5) intensity = 4; // Meget høj (Red)
+      else if (weightedScore >= 1.8) intensity = 3; // Høj (Orange)
+      else if (weightedScore >= 1.0) intensity = 2; // Medium (Yellow)
+      else if (weightedScore > 0) intensity = 1; // Lav (Light green)
+      else intensity = 0; // Ingen aktivitet (Gray)
       
       heatMap[date] = {
         marked: true,
@@ -120,11 +248,11 @@ export default function ProgressScreen() {
 
   const getIntensityColor = (intensity: number): string => {
     switch (intensity) {
-      case 4: return '#FF4444'; // Red - High intensity
-      case 3: return '#FF8800'; // Orange - Medium-high
-      case 2: return '#FFDD00'; // Yellow - Medium
-      case 1: return '#88FF88'; // Light green - Low
-      default: return '#E0E0E0'; // Gray - No activity
+      case 4: return '#FF4444'; // Red - Meget høj intensitet (90+ min, 8+ øvelser, 20+ sæt)
+      case 3: return '#FF8800'; // Orange - Høj intensitet (60+ min, 5+ øvelser, 12+ sæt)  
+      case 2: return '#FFDD00'; // Yellow - Medium intensitet (30+ min, 3+ øvelser, 6+ sæt)
+      case 1: return '#88FF88'; // Light green - Lav intensitet (kort træning)
+      default: return '#E0E0E0'; // Gray - Ingen aktivitet
     }
   };
 
@@ -344,19 +472,37 @@ export default function ProgressScreen() {
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Hurtige Handlinger</Text>
         <View style={styles.quickActionsGrid}>
-          <TouchableOpacity style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+          <TouchableOpacity 
+            style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+            onPress={() => navigation.navigate('Training', { initialTab: 'sessions' })}
+          >
             <Ionicons name="add-circle" size={24} color={theme.colors.primary} />
             <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Start Workout</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+          <TouchableOpacity 
+            style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+            onPress={() => setActiveTab('analytics')}
+          >
             <Ionicons name="stats-chart" size={24} color={theme.colors.secondary} />
             <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Se Analyser</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+          <TouchableOpacity 
+            style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+            onPress={() => setActiveTab('achievements')}
+          >
             <Ionicons name="trophy" size={24} color={theme.colors.secondary} />
             <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Præstationer</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+          <TouchableOpacity 
+            style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+            onPress={() => {
+              Alert.alert(
+                'Del Fremskridt',
+                'Denne funktion kommer snart! Du vil kunne dele dine træningsresultater på sociale medier.',
+                [{ text: 'OK' }]
+              );
+            }}
+          >
             <Ionicons name="share" size={24} color={theme.colors.accent} />
             <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Del Fremskridt</Text>
           </TouchableOpacity>
@@ -682,7 +828,10 @@ export default function ProgressScreen() {
 
         {/* Heat Map Legend */}
         <View style={[styles.heatMapLegend, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-          <Text style={[styles.legendTitle, { color: theme.colors.text }]}>Intensitet</Text>
+          <Text style={[styles.legendTitle, { color: theme.colors.text }]}>Træningsintensitet</Text>
+          <Text style={[styles.legendSubtitle, { color: theme.colors.textSecondary }]}>
+            Baseret på varighed, antal øvelser og sæt
+          </Text>
           <View style={styles.legendItems}>
             <View style={styles.legendItem}>
               <View style={[styles.legendColor, { backgroundColor: '#E0E0E0' }]} />
@@ -759,12 +908,17 @@ export default function ProgressScreen() {
             
             {selectedDateWorkouts.length > 0 ? (
               selectedDateWorkouts.map((workout, index) => (
-                <View key={workout.id || index} style={[styles.workoutCard, { backgroundColor: theme.colors.background }]}>
+                <TouchableOpacity 
+                  key={workout.id || index} 
+                  style={[styles.workoutCard, { backgroundColor: theme.colors.background }]}
+                  onPress={() => handleWorkoutPress(workout)}
+                >
                   <View style={styles.workoutHeader}>
                     <Ionicons name="fitness" size={20} color={theme.colors.primary} />
                     <Text style={[styles.workoutName, { color: theme.colors.text }]}>
                       {workout.name || 'Workout'}
                     </Text>
+                    <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} style={{ marginLeft: 'auto' }} />
                   </View>
                   
                   {workout.duration && (
@@ -784,7 +938,7 @@ export default function ProgressScreen() {
                       </Text>
                     </View>
                   )}
-                </View>
+                </TouchableOpacity>
               ))
             ) : (
               <View style={[styles.noWorkoutCard, { backgroundColor: theme.colors.background }]}>
@@ -924,9 +1078,171 @@ export default function ProgressScreen() {
         {activeTab === 'achievements' && renderAchievementsTab()}
         {activeTab === 'calendar' && renderCalendarTab()}
       </ScrollView>
+
+      {/* Workout Details Modal */}
+      <Modal
+        visible={showWorkoutDetailsModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowWorkoutDetailsModal(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>
+                {selectedWorkout?.name || 'Træning Detaljer'}
+              </Text>
+              <TouchableOpacity 
+                onPress={() => setShowWorkoutDetailsModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+              {/* Workout Info */}
+              <View style={[styles.workoutInfoSection, { backgroundColor: theme.colors.card }]}>
+                <View style={styles.workoutInfoRow}>
+                  <Ionicons name="calendar" size={20} color={theme.colors.primary} />
+                  <Text style={[styles.workoutInfoText, { color: theme.colors.text }]}>
+                    {selectedWorkout?.date ? new Date(selectedWorkout.date).toLocaleDateString('da-DK') : ''}
+                  </Text>
+                </View>
+                {selectedWorkout?.duration && (
+                  <View style={styles.workoutInfoRow}>
+                    <Ionicons name="time" size={20} color={theme.colors.primary} />
+                    <Text style={[styles.workoutInfoText, { color: theme.colors.text }]}>
+                      {selectedWorkout.duration} minutter
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Sets */}
+              <Text style={[styles.setsTitle, { color: theme.colors.text }]}>Sæt og Reps</Text>
+              {workoutSets.length > 0 ? (
+                (() => {
+                  // Group sets by exercise
+                  const exerciseGroups = workoutSets.reduce((groups: any, set: any) => {
+                    if (!groups[set.exercise_id]) {
+                      groups[set.exercise_id] = {
+                        exercise_name: set.exercise_name,
+                        sets: []
+                      };
+                    }
+                    groups[set.exercise_id].sets.push(set);
+                    return groups;
+                  }, {});
+
+                  return Object.entries(exerciseGroups).map(([exerciseId, group]: [string, any]) => (
+                    <View key={exerciseId} style={[styles.exerciseGroup, { backgroundColor: theme.colors.card }]}>
+                      <Text style={[styles.exerciseName, { color: theme.colors.text }]}>{group.exercise_name}</Text>
+                      {group.sets.map((set: any, index: number) => (
+                        <SetEditRow 
+                          key={set.id} 
+                          set={set} 
+                          index={index}
+                          theme={theme}
+                          onUpdate={handleUpdateSet}
+                          editingWorkout={editingWorkout}
+                        />
+                      ))}
+                    </View>
+                  ));
+                })()
+              ) : (
+                <Text style={[styles.noSetsText, { color: theme.colors.textSecondary }]}>
+                  Ingen sæt fundet
+                </Text>
+              )}
+            </ScrollView>
+
+            {/* Action Buttons */}
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.editButton, { backgroundColor: theme.colors.primary }]}
+                onPress={() => setEditingWorkout(!editingWorkout)}
+              >
+                <Ionicons name={editingWorkout ? "checkmark" : "create"} size={20} color="#fff" />
+                <Text style={styles.actionButtonText}>
+                  {editingWorkout ? "Gem" : "Rediger"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.deleteButton, { backgroundColor: theme.colors.error || '#FF3B30' }]}
+                onPress={handleDeleteWorkout}
+              >
+                <Ionicons name="trash" size={20} color="#fff" />
+                <Text style={styles.actionButtonText}>Slet</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
+
+// Set Edit Row Component
+const SetEditRow: React.FC<{
+  set: any;
+  index: number;
+  theme: any;
+  onUpdate: (setId: string, reps: number, weight: number) => void;
+  editingWorkout: boolean;
+}> = ({ set, index, theme, onUpdate, editingWorkout }) => {
+  const [reps, setReps] = useState(set.reps.toString());
+  const [weight, setWeight] = useState(set.weight.toString());
+
+  const handleSave = () => {
+    const newReps = parseInt(reps);
+    const newWeight = parseFloat(weight);
+    
+    if (isNaN(newReps) || isNaN(newWeight) || newReps <= 0 || newWeight <= 0) {
+      Alert.alert('Fejl', 'Indtast gyldige værdier for reps og vægt');
+      return;
+    }
+    
+    onUpdate(set.id, newReps, newWeight);
+  };
+
+  return (
+    <View style={[styles.setRow, { backgroundColor: theme.colors.background }]}>
+      <Text style={[styles.setNumber, { color: theme.colors.primary }]}>Sæt {index + 1}</Text>
+      
+      {editingWorkout ? (
+        <View style={styles.setEditInputs}>
+          <View style={styles.setInput}>
+            <Text style={[styles.setInputLabel, { color: theme.colors.textSecondary }]}>Reps</Text>
+            <TextInput
+              style={[styles.setTextInput, { backgroundColor: theme.colors.card, color: theme.colors.text }]}
+              value={reps}
+              onChangeText={setReps}
+              keyboardType="numeric"
+              onBlur={handleSave}
+            />
+          </View>
+          <View style={styles.setInput}>
+            <Text style={[styles.setInputLabel, { color: theme.colors.textSecondary }]}>Kg</Text>
+            <TextInput
+              style={[styles.setTextInput, { backgroundColor: theme.colors.card, color: theme.colors.text }]}
+              value={weight}
+              onChangeText={setWeight}
+              keyboardType="numeric"
+              onBlur={handleSave}
+            />
+          </View>
+        </View>
+      ) : (
+        <View style={styles.setValues}>
+          <Text style={[styles.setValue, { color: theme.colors.text }]}>{set.reps} reps</Text>
+          <Text style={[styles.setValue, { color: theme.colors.text }]}>{set.weight} kg</Text>
+        </View>
+      )}
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -1405,6 +1721,10 @@ const styles = StyleSheet.create({
   legendTitle: {
     fontSize: 16,
     fontWeight: '600',
+    marginBottom: 4,
+  },
+  legendSubtitle: {
+    fontSize: 12,
     marginBottom: 12,
   },
   legendItems: {
@@ -1513,5 +1833,139 @@ const styles = StyleSheet.create({
   workoutStatLabel: {
     fontSize: 12,
     textAlign: 'center',
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  modalCloseButton: {
+    padding: 5,
+  },
+  modalScrollContent: {
+    flex: 1,
+  },
+  workoutInfoSection: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  workoutInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  workoutInfoText: {
+    fontSize: 16,
+    marginLeft: 12,
+  },
+  setsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+  },
+  exerciseGroup: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  exerciseName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  setRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  setNumber: {
+    fontSize: 14,
+    fontWeight: '600',
+    minWidth: 50,
+  },
+  setValues: {
+    flexDirection: 'row',
+    flex: 1,
+    justifyContent: 'space-around',
+  },
+  setValue: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  setEditInputs: {
+    flexDirection: 'row',
+    flex: 1,
+    justifyContent: 'space-around',
+  },
+  setInput: {
+    alignItems: 'center',
+  },
+  setInputLabel: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  setTextInput: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 6,
+    padding: 8,
+    minWidth: 60,
+    textAlign: 'center',
+  },
+  noSetsText: {
+    textAlign: 'center',
+    fontSize: 16,
+    marginTop: 20,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    flex: 0.48,
+  },
+  editButton: {
+    // backgroundColor will be set dynamically
+  },
+  deleteButton: {
+    // backgroundColor will be set dynamically
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });

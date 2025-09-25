@@ -9,7 +9,6 @@ import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import TrainingScreen from '../screens/TrainingScreen';
 import ProgressScreen from '../screens/ProgressScreen';
-import WorkoutHistoryScreen from '../screens/WorkoutHistoryScreen';
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 
@@ -26,8 +25,6 @@ export default function TabNavigator() {
             iconName = focused ? 'fitness' : 'fitness-outline';
           } else if (route.name === 'Progress') {
             iconName = focused ? 'trending-up' : 'trending-up-outline';
-          } else if (route.name === 'WorkoutHistory') {
-            iconName = focused ? 'list' : 'list-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           } else {
@@ -69,11 +66,6 @@ export default function TabNavigator() {
         name="Progress" 
         component={ProgressScreen}
         options={{ title: 'Fremskridt' }}
-      />
-      <Tab.Screen 
-        name="WorkoutHistory" 
-        component={WorkoutHistoryScreen}
-        options={{ title: 'Træninger' }}
       />
       <Tab.Screen 
         name="Profile" 

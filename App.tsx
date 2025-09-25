@@ -56,6 +56,10 @@ export default function App() {
         // Initialize database for all platforms
         await initDatabase();
         
+        // Clean up any incomplete workouts from previous sessions
+        const { cleanupAllIncompleteWorkouts } = useExerciseStore.getState();
+        await cleanupAllIncompleteWorkouts();
+        
         // Load all data from stores
         await Promise.all([
           loadExercises(),

@@ -14,17 +14,26 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import Constants from 'expo-constants';
+import { useNavigation } from '@react-navigation/native';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { RootTabParamList } from '../types';
 import { getDatabase } from '../database';
 import { UserProfile } from '../types';
 import { useExerciseStore } from '../stores/exerciseStore';
 import { useTheme } from '../contexts/ThemeContext';
 
+type ProfileScreenNavigationProp = BottomTabNavigationProp<RootTabParamList, 'Profile'>;
+
 export default function ProfileScreen() {
+  const navigation = useNavigation<ProfileScreenNavigationProp>();
   const { exercises, trainingSessions } = useExerciseStore();
   const { theme, isDark, setTheme } = useTheme();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
+  const [recentWorkouts, setRecentWorkouts] = useState<Array<any>>([]);
+  const [showWorkoutLogModal, setShowWorkoutLogModal] = useState(false);
   const [editForm, setEditForm] = useState({
     name: '',
     weight: '',
@@ -45,7 +54,67 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     loadProfile();
+    loadRecentWorkouts();
   }, []);
+
+  const loadRecentWorkouts = async () => {
+    try {
+      const db = getDatabase();
+      const workouts = await db.getAllAsync(`
+        SELECT 
+          w.id,
+          w.name,
+          w.date,
+          w.duration,
+          w.completed,
+          w.notes,
+          ts.name as session_name,
+          COUNT(DISTINCT we.exercise_id) as exercise_count,
+          COUNT(s.id) as total_sets
+        FROM workouts w
+        LEFT JOIN training_sessions ts ON w.session_id = ts.id
+        LEFT JOIN workout_exercises we ON w.id = we.workout_id
+        LEFT JOIN sets s ON we.id = s.workout_exercise_id
+        WHERE w.completed = 1
+        GROUP BY w.id
+        ORDER BY w.date DESC, w.created_at DESC
+        LIMIT 10
+      `) as any[];
+      
+      setRecentWorkouts(workouts);
+    } catch (error) {
+      console.error('Error loading recent workouts:', error);
+    }
+  };
+
+  const loadAllWorkouts = async () => {
+    try {
+      const db = getDatabase();
+      const workouts = await db.getAllAsync(`
+        SELECT 
+          w.id,
+          w.name,
+          w.date,
+          w.duration,
+          w.completed,
+          w.notes,
+          ts.name as session_name,
+          COUNT(DISTINCT we.exercise_id) as exercise_count,
+          COUNT(s.id) as total_sets
+        FROM workouts w
+        LEFT JOIN training_sessions ts ON w.session_id = ts.id
+        LEFT JOIN workout_exercises we ON w.id = we.workout_id
+        LEFT JOIN sets s ON we.id = s.workout_exercise_id
+        WHERE w.completed = 1
+        GROUP BY w.id
+        ORDER BY w.date DESC, w.created_at DESC
+      `) as any[];
+      
+      setRecentWorkouts(workouts);
+    } catch (error) {
+      console.error('Error loading all workouts:', error);
+    }
+  };
 
   const loadProfile = async () => {
     try {
@@ -164,38 +233,50 @@ export default function ProfileScreen() {
     try {
       const db = getDatabase();
       
-      // Hent alle data
-      const workouts = await db.getAllAsync('SELECT * FROM workouts ORDER BY date DESC');
-      const exercises = await db.getAllAsync('SELECT * FROM exercises');
-      const sets = await db.getAllAsync('SELECT * FROM sets ORDER BY created_at DESC');
-      const progress = await db.getAllAsync('SELECT * FROM progress_data ORDER BY date DESC');
-      
-      const exportData = {
-        exportDate: new Date().toISOString(),
-        version: '1.0',
-        data: {
-          workouts,
-          exercises,
-          sets,
-          progress
-        }
-      };
-      
-      // Konverter til JSON string
-      const jsonString = JSON.stringify(exportData, null, 2);
-      
-      // I en rigtig app ville man bruge expo-file-system til at gemme filen
-      // Her viser vi bare dataene i en alert for demonstration
       Alert.alert(
-        'Data Eksporteret',
-        `Eksporteret ${workouts.length} træninger, ${exercises.length} øvelser, ${sets.length} sæt og ${progress.length} fremskridt poster.\n\nData er klar til download.`,
-        [{ text: 'OK' }]
+        'Export Træningsdata',
+        'Export af alle dine træningsdata som backup fil. Dette inkluderer træninger, øvelser, sæt og fremskridt.',
+        [
+          { text: 'Annuller', style: 'cancel' },
+          {
+            text: 'Export',
+            onPress: async () => {
+              try {
+                // Hent alle data
+                const workouts = await db.getAllAsync('SELECT * FROM workouts ORDER BY date DESC');
+                const exercises = await db.getAllAsync('SELECT * FROM exercises');
+                const sets = await db.getAllAsync('SELECT * FROM sets ORDER BY created_at DESC');
+                const progress = await db.getAllAsync('SELECT * FROM progress_data ORDER BY date DESC');
+                
+                const exportData = {
+                  exportDate: new Date().toISOString(),
+                  version: '1.0',
+                  summary: {
+                    totalWorkouts: workouts.length,
+                    totalExercises: exercises.length,
+                    totalSets: sets.length,
+                    totalProgress: progress.length
+                  },
+                  data: { workouts, exercises, sets, progress }
+                };
+                
+                console.log('📤 Export data ready:', exportData);
+                
+                Alert.alert(
+                  '✅ Data Eksporteret',
+                  `📊 Eksporteret:\n• ${workouts.length} træninger\n• ${exercises.length} øvelser\n• ${sets.length} sæt\n• ${progress.length} fremskridt poster\n\nData er logget til konsollen for udvikling.`,
+                  [{ text: 'OK' }]
+                );
+              } catch (error) {
+                Alert.alert('❌ Export Fejl', 'Der opstod en fejl under eksporten.');
+              }
+            }
+          }
+        ]
       );
-      
-      console.log('Export data:', exportData);
     } catch (error) {
-      console.error('Error exporting data:', error);
-      Alert.alert('Fejl', 'Kunne ikke eksportere data');
+      console.error('Error preparing export:', error);
+      Alert.alert('Fejl', 'Kunne ikke forberede data export');
     }
   };
 
@@ -248,45 +329,6 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleClearData = () => {
-    Alert.alert(
-      'Slet Alle Data',
-      'Dette vil slette alle dine træninger, øvelser og fremskridt data. Denne handling kan ikke fortrydes.',
-      [
-        { text: 'Annuller', style: 'cancel' },
-        {
-          text: 'Slet Data',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const db = getDatabase();
-              await db.execAsync(`
-                DELETE FROM sets;
-                DELETE FROM workout_exercises;
-                DELETE FROM workouts;
-                DELETE FROM progress_data;
-                DELETE FROM template_exercises;
-                DELETE FROM workout_templates;
-                DELETE FROM exercises;
-                DELETE FROM training_sessions;
-                DELETE FROM muscle_groups;
-              `);
-              
-              // Reload all data to reflect changes
-              await loadUserProfile();
-              await loadAchievements();
-              await loadUserStats();
-              
-              Alert.alert('Succes', 'Alle data er blevet slettet');
-            } catch (error) {
-              console.error('Error clearing data:', error);
-              Alert.alert('Fejl', 'Kunne ikke slette data');
-            }
-          }
-        }
-      ]
-    );
-  };
 
   const getExperienceColor = (experience: string) => {
     switch (experience) {
@@ -450,6 +492,75 @@ export default function ProfileScreen() {
           </View>
         )}
 
+        {/* Workout Log */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Seneste Træninger</Text>
+            <TouchableOpacity onPress={() => {
+              loadAllWorkouts();
+              setShowWorkoutLogModal(true);
+            }}>
+              <Text style={[styles.seeAllText, { color: theme.colors.primary }]}>Se alle</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {recentWorkouts.length > 0 ? (
+            <View style={styles.workoutLogContainer}>
+              {recentWorkouts.slice(0, 3).map((workout, index) => (
+                <View key={workout.id} style={[styles.workoutLogItem, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+                  <View style={styles.workoutLogHeader}>
+                    <View style={styles.workoutLogInfo}>
+                      <Text style={[styles.workoutLogName, { color: theme.colors.text }]} numberOfLines={1}>
+                        {workout.name}
+                      </Text>
+                      <Text style={[styles.workoutLogSession, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                        {workout.session_name}
+                      </Text>
+                    </View>
+                    <View style={styles.workoutLogDate}>
+                      <Text style={[styles.workoutLogDateText, { color: theme.colors.textSecondary }]}>
+                        {new Date(workout.date).toLocaleDateString('da-DK', { 
+                          day: 'numeric', 
+                          month: 'short' 
+                        })}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.workoutLogStats}>
+                    <View style={styles.workoutLogStat}>
+                      <Ionicons name="time" size={14} color={theme.colors.primary} />
+                      <Text style={[styles.workoutLogStatText, { color: theme.colors.textSecondary }]}>
+                        {workout.duration || 0} min
+                      </Text>
+                    </View>
+                    <View style={styles.workoutLogStat}>
+                      <Ionicons name="fitness" size={14} color={theme.colors.secondary} />
+                      <Text style={[styles.workoutLogStatText, { color: theme.colors.textSecondary }]}>
+                        {workout.exercise_count || 0} øvelser
+                      </Text>
+                    </View>
+                    <View style={styles.workoutLogStat}>
+                      <Ionicons name="layers" size={14} color={theme.colors.accent} />
+                      <Text style={[styles.workoutLogStatText, { color: theme.colors.textSecondary }]}>
+                        {workout.total_sets || 0} sæt
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={[styles.emptyWorkoutLog, { backgroundColor: theme.colors.card }]}>
+              <Ionicons name="fitness-outline" size={48} color={theme.colors.textTertiary} />
+              <Text style={[styles.emptyWorkoutLogText, { color: theme.colors.text }]}>Ingen træninger endnu</Text>
+              <Text style={[styles.emptyWorkoutLogSubtext, { color: theme.colors.textSecondary }]}>
+                Dine fuldførte træninger vil vises her
+              </Text>
+            </View>
+          )}
+        </View>
+
         {/* Settings */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Indstillinger</Text>
@@ -514,49 +625,43 @@ export default function ProfileScreen() {
           <View style={styles.quickActionsGrid}>
             <TouchableOpacity 
               style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+              onPress={() => navigation.navigate('Training', { initialTab: 'sessions' })}
+            >
+              <Ionicons name="add-circle" size={24} color={theme.colors.primary} />
+              <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Start Træning</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+              onPress={() => navigation.navigate('Progress', { initialTab: 'calendar' })}
+            >
+              <Ionicons name="calendar" size={24} color={theme.colors.secondary} />
+              <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Se Kalender</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+              onPress={() => navigation.navigate('Progress', { initialTab: 'analytics' })}
+            >
+              <Ionicons name="stats-chart" size={24} color={theme.colors.accent} />
+              <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Analyser</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
               onPress={handleExportData}
             >
               <Ionicons name="download-outline" size={24} color={theme.colors.secondary} />
               <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Export Data</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
-              onPress={handleBackupData}
-            >
-              <Ionicons name="cloud-upload-outline" size={24} color={theme.colors.primary} />
-              <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Backup</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
-              onPress={handleShareProgress}
-            >
-              <Ionicons name="share-outline" size={24} color={theme.colors.accent} />
-              <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Del Progress</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
-              onPress={handleHelp}
-            >
-              <Ionicons name="help-circle-outline" size={24} color={theme.colors.info} />
-              <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Hjælp</Text>
-            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Data Management */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Data Management</Text>
-          <TouchableOpacity style={[styles.dangerButton, { backgroundColor: theme.colors.error, shadowColor: theme.colors.shadow }]} onPress={handleClearData}>
-            <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
-            <Text style={[styles.dangerButtonText, { color: '#FFFFFF' }]}>Ryd Alle Data</Text>
-          </TouchableOpacity>
-        </View>
 
         {/* App Info */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>App Information</Text>
           <View style={[styles.infoCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-            <Text style={[styles.appInfo, { color: theme.colors.text }]}>Progressive Overload v1.0.0</Text>
+            <Text style={[styles.appInfo, { color: theme.colors.text }]}>
+              Progressive Overload v{Constants.expoConfig?.version || '1.0.0'}
+            </Text>
             <Text style={[styles.appInfo, { color: theme.colors.text }]}>Built with React Native & Expo</Text>
           </View>
         </View>
@@ -706,6 +811,90 @@ export default function ProfileScreen() {
             </View>
           </View>
         </Modal>
+
+        {/* Workout Log Modal */}
+        <Modal
+          visible={showWorkoutLogModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowWorkoutLogModal(false)}
+        >
+          <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Alle Træninger</Text>
+                <TouchableOpacity onPress={() => setShowWorkoutLogModal(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.primary} />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView style={styles.workoutLogModalContent}>
+                {recentWorkouts.length > 0 ? (
+                  recentWorkouts.map((workout, index) => (
+                    <View key={workout.id} style={[styles.workoutLogItem, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow, marginBottom: 12 }]}>
+                      <View style={styles.workoutLogHeader}>
+                        <View style={styles.workoutLogInfo}>
+                          <Text style={[styles.workoutLogName, { color: theme.colors.text }]} numberOfLines={1}>
+                            {workout.name}
+                          </Text>
+                          <Text style={[styles.workoutLogSession, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                            {workout.session_name}
+                          </Text>
+                        </View>
+                        <View style={styles.workoutLogDate}>
+                          <Text style={[styles.workoutLogDateText, { color: theme.colors.textSecondary }]}>
+                            {new Date(workout.date).toLocaleDateString('da-DK', { 
+                              day: 'numeric', 
+                              month: 'short',
+                              year: 'numeric'
+                            })}
+                          </Text>
+                        </View>
+                      </View>
+                      
+                      <View style={styles.workoutLogStats}>
+                        <View style={styles.workoutLogStat}>
+                          <Ionicons name="time" size={14} color={theme.colors.primary} />
+                          <Text style={[styles.workoutLogStatText, { color: theme.colors.textSecondary }]}>
+                            {workout.duration || 0} min
+                          </Text>
+                        </View>
+                        <View style={styles.workoutLogStat}>
+                          <Ionicons name="fitness" size={14} color={theme.colors.secondary} />
+                          <Text style={[styles.workoutLogStatText, { color: theme.colors.textSecondary }]}>
+                            {workout.exercise_count || 0} øvelser
+                          </Text>
+                        </View>
+                        <View style={styles.workoutLogStat}>
+                          <Ionicons name="layers" size={14} color={theme.colors.accent} />
+                          <Text style={[styles.workoutLogStatText, { color: theme.colors.textSecondary }]}>
+                            {workout.total_sets || 0} sæt
+                          </Text>
+                        </View>
+                      </View>
+                      
+                      {workout.notes && (
+                        <View style={styles.workoutLogNotes}>
+                          <Text style={[styles.workoutLogNotesText, { color: theme.colors.textSecondary }]}>
+                            {workout.notes}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  ))
+                ) : (
+                  <View style={[styles.emptyWorkoutLog, { backgroundColor: theme.colors.card }]}>
+                    <Ionicons name="fitness-outline" size={48} color={theme.colors.textTertiary} />
+                    <Text style={[styles.emptyWorkoutLogText, { color: theme.colors.text }]}>Ingen træninger endnu</Text>
+                    <Text style={[styles.emptyWorkoutLogSubtext, { color: theme.colors.textSecondary }]}>
+                      Dine fuldførte træninger vil vises her
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       </ScrollView>
     );
   }
@@ -832,22 +1021,95 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 2,
   },
-  dangerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 15,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  dangerButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginLeft: 8,
-  },
   appInfo: {
     fontSize: 14,
     textAlign: 'center',
     marginBottom: 4,
+  },
+  seeAllText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  workoutLogContainer: {
+    gap: 12,
+  },
+  workoutLogItem: {
+    borderRadius: 12,
+    padding: 16,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  workoutLogHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  workoutLogInfo: {
+    flex: 1,
+  },
+  workoutLogName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  workoutLogSession: {
+    fontSize: 14,
+  },
+  workoutLogDate: {
+    alignItems: 'flex-end',
+  },
+  workoutLogDateText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  workoutLogStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  workoutLogStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  workoutLogStatText: {
+    fontSize: 12,
+  },
+  emptyWorkoutLog: {
+    alignItems: 'center',
+    padding: 32,
+    borderRadius: 12,
+  },
+  emptyWorkoutLogText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  emptyWorkoutLogSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  workoutLogModalContent: {
+    maxHeight: 400,
+  },
+  workoutLogNotes: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+  },
+  workoutLogNotesText: {
+    fontSize: 12,
+    fontStyle: 'italic',
   },
   modalOverlay: {
     flex: 1,

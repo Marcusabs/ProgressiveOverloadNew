@@ -15,9 +15,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { useExerciseStore } from '../stores/exerciseStore';
 import { TrainingSession, Exercise } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
+import { Calendar } from '../components/ui';
 
 import { RouteProp } from '@react-navigation/native';
 import { RootTabParamList } from '../types';
@@ -25,7 +27,7 @@ import { RootTabParamList } from '../types';
 type TrainingScreenRouteProp = RouteProp<RootTabParamList, 'Training'>;
 
 export default function TrainingScreen({ route }: { route: TrainingScreenRouteProp }) {
-  const { trainingSessions, exercises, muscleGroups, loadTrainingSessions, loadExercises, loadMuscleGroups, updateExercise, addExercise, deleteExercise, addTrainingSession, updateTrainingSession, deleteTrainingSession, startWorkout, endWorkout, addSetToExercise, updateSetInExercise, deleteSetFromExercise, getProgressiveOverloadSuggestions, currentWorkout, setCurrentWorkout } = useExerciseStore();
+  const { trainingSessions, exercises, muscleGroups, loadTrainingSessions, loadExercises, loadMuscleGroups, updateExercise, addExercise, deleteExercise, addTrainingSession, updateTrainingSession, deleteTrainingSession, startWorkout, endWorkout, addSetToExercise, updateSetInExercise, deleteSetFromExercise, getProgressiveOverloadSuggestions, currentWorkout, setCurrentWorkout, cleanupIncompleteWorkout } = useExerciseStore();
   const { theme, isDark } = useTheme();
   const [activeTab, setActiveTab] = useState<'sessions' | 'exercises' | 'builder'>(
     route?.params?.initialTab || 'sessions'
@@ -53,6 +55,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [currentSet, setCurrentSet] = useState({ reps: '', weight: '' });
   const [completedSets, setCompletedSets] = useState<Array<{reps: number, weight: number}>>([]);
+  const [allExerciseSets, setAllExerciseSets] = useState<{[exerciseId: string]: Array<{reps: number, weight: number}>}>({});
   const [showProgressiveOverload, setShowProgressiveOverload] = useState(false);
   const [progressiveOverloadSuggestions, setProgressiveOverloadSuggestions] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -129,6 +132,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
       setTrainingStartTime(new Date());
       setCurrentExerciseIndex(0);
       setCompletedSets([]);
+      setAllExerciseSets({});
       setCurrentSet({ reps: '', weight: '' });
       setShowLiveTraining(true);
     }
@@ -138,6 +142,13 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
   useEffect(() => {
     if (showLiveTraining && currentWorkout) {
       loadProgressiveOverloadSuggestions();
+      
+      // Load existing sets for current exercise if any
+      const sessionExercises = getExercisesForSession(currentWorkout.session_id);
+      const currentExercise = sessionExercises[currentExerciseIndex];
+      if (currentExercise && allExerciseSets[currentExercise.id]) {
+        setCompletedSets(allExerciseSets[currentExercise.id]);
+      }
     }
   }, [currentExerciseIndex, showLiveTraining, currentWorkout]);
 
@@ -334,6 +345,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
       setTrainingStartTime(new Date());
       setCurrentExerciseIndex(0);
       setCompletedSets([]);
+      setAllExerciseSets({});
       setCurrentSet({ reps: '', weight: '' });
       setShowLiveTraining(true);
     } catch (error) {
@@ -359,13 +371,31 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
         {
           text: 'Afslut uden at gemme',
           style: 'destructive',
-          onPress: () => {
-            setShowLiveTraining(false);
-            setTrainingStartTime(null);
-            setCurrentExerciseIndex(0);
-            setCompletedSets([]);
-            setCurrentSet({ reps: '', weight: '' });
-            setCurrentWorkout(null);
+          onPress: async () => {
+            try {
+              // Clean up any sets that were saved during training
+              if (currentWorkout?.id) {
+                await cleanupIncompleteWorkout(currentWorkout.id);
+              }
+              
+              setShowLiveTraining(false);
+              setTrainingStartTime(null);
+              setCurrentExerciseIndex(0);
+              setCompletedSets([]);
+              setAllExerciseSets({});
+              setCurrentSet({ reps: '', weight: '' });
+              setCurrentWorkout(null);
+            } catch (error) {
+              console.error('Error cleaning up workout:', error);
+              // Still close the training even if cleanup fails
+              setShowLiveTraining(false);
+              setTrainingStartTime(null);
+              setCurrentExerciseIndex(0);
+              setCompletedSets([]);
+              setAllExerciseSets({});
+              setCurrentSet({ reps: '', weight: '' });
+              setCurrentWorkout(null);
+            }
           },
         },
         {
@@ -377,6 +407,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
               setTrainingStartTime(null);
               setCurrentExerciseIndex(0);
               setCompletedSets([]);
+              setAllExerciseSets({});
               setCurrentSet({ reps: '', weight: '' });
               setCurrentWorkout(null);
               Alert.alert('Succes', 'Træningen er gemt!');
@@ -425,6 +456,9 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
       await addSetToExercise(currentWorkout.id, currentExercise.id, reps, weight);
       setCompletedSets([...completedSets, { reps, weight }]);
       setCurrentSet({ reps: '', weight: '' });
+      
+      // Haptic feedback for successful set addition
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
       // Start rest timer after adding a set
       startRestTimer(restTimerDuration); // Use user-selected duration
@@ -722,16 +756,55 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
   const handleNextExercise = () => {
     const sessionExercises = getExercisesForSession(currentWorkout?.session_id || '');
     if (currentExerciseIndex < sessionExercises.length - 1) {
-      setCurrentExerciseIndex(currentExerciseIndex + 1);
-      setCompletedSets([]);
+      // Save current exercise sets before moving to next
+      const currentExercise = sessionExercises[currentExerciseIndex];
+      if (currentExercise) {
+        const updatedSets = {
+          ...allExerciseSets,
+          [currentExercise.id]: completedSets
+        };
+        setAllExerciseSets(updatedSets);
+      }
+      
+      // Move to next exercise
+      const nextIndex = currentExerciseIndex + 1;
+      setCurrentExerciseIndex(nextIndex);
+      const nextExercise = sessionExercises[nextIndex];
+      
+      // Load sets for next exercise (if any)
+      if (nextExercise) {
+        setCompletedSets(allExerciseSets[nextExercise.id] || []);
+      } else {
+        setCompletedSets([]);
+      }
       setCurrentSet({ reps: '', weight: '' });
     }
   };
 
   const handlePreviousExercise = () => {
     if (currentExerciseIndex > 0) {
-      setCurrentExerciseIndex(currentExerciseIndex - 1);
-      setCompletedSets([]);
+      // Save current exercise sets before moving to previous
+      const sessionExercises = getExercisesForSession(currentWorkout?.session_id || '');
+      const currentExercise = sessionExercises[currentExerciseIndex];
+      if (currentExercise) {
+        const updatedSets = {
+          ...allExerciseSets,
+          [currentExercise.id]: completedSets
+        };
+        setAllExerciseSets(updatedSets);
+      }
+      
+      // Move to previous exercise
+      const prevIndex = currentExerciseIndex - 1;
+      setCurrentExerciseIndex(prevIndex);
+      const prevExercise = sessionExercises[prevIndex];
+      
+      // Load sets for previous exercise (if any)
+      if (prevExercise) {
+        setCompletedSets(allExerciseSets[prevExercise.id] || []);
+      } else {
+        setCompletedSets([]);
+      }
       setCurrentSet({ reps: '', weight: '' });
     }
   };
@@ -953,6 +1026,14 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
 
   const handleCompleteManualWorkout = async () => {
     try {
+      // Save current exercise sets before completing
+      const currentExercise = manualWorkoutData.exercises[manualCurrentExerciseIndex];
+      const finalSets = {
+        ...manualAllExerciseSets,
+        [currentExercise.id]: manualCompletedSets
+      };
+      setManualAllExerciseSets(finalSets);
+
       // Create workout
       const { addWorkout } = useExerciseStore.getState();
       const workout = await addWorkout({
@@ -969,7 +1050,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
       // Add exercises and sets
       for (let i = 0; i < manualWorkoutData.exercises.length; i++) {
         const exercise = manualWorkoutData.exercises[i];
-        const sets = manualAllExerciseSets[exercise.id] || [];
+        const sets = finalSets[exercise.id] || [];
         
         if (sets.length > 0) {
           // Create workout_exercise
@@ -1039,6 +1120,9 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
       [currentExercise.id]: newCompletedSets
     }));
     
+    // Haptic feedback for successful set addition
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    
     // Clear form
     setManualCurrentSet({ reps: '', weight: '' });
   };
@@ -1047,15 +1131,17 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
     if (manualCurrentExerciseIndex < manualWorkoutData.exercises.length - 1) {
       // Save current exercise sets
       const currentExercise = manualWorkoutData.exercises[manualCurrentExerciseIndex];
-      setManualAllExerciseSets(prev => ({
-        ...prev,
+      const updatedSets = {
+        ...manualAllExerciseSets,
         [currentExercise.id]: manualCompletedSets
-      }));
+      };
+      setManualAllExerciseSets(updatedSets);
       
       // Move to next exercise
-      setManualCurrentExerciseIndex(prev => prev + 1);
-      const nextExercise = manualWorkoutData.exercises[manualCurrentExerciseIndex + 1];
-      setManualCompletedSets(manualAllExerciseSets[nextExercise.id] || []);
+      const nextIndex = manualCurrentExerciseIndex + 1;
+      setManualCurrentExerciseIndex(nextIndex);
+      const nextExercise = manualWorkoutData.exercises[nextIndex];
+      setManualCompletedSets(updatedSets[nextExercise.id] || []);
     }
   };
 
@@ -1063,16 +1149,89 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
     if (manualCurrentExerciseIndex > 0) {
       // Save current exercise sets
       const currentExercise = manualWorkoutData.exercises[manualCurrentExerciseIndex];
-      setManualAllExerciseSets(prev => ({
-        ...prev,
+      const updatedSets = {
+        ...manualAllExerciseSets,
         [currentExercise.id]: manualCompletedSets
-      }));
+      };
+      setManualAllExerciseSets(updatedSets);
       
       // Move to previous exercise
-      setManualCurrentExerciseIndex(prev => prev - 1);
-      const prevExercise = manualWorkoutData.exercises[manualCurrentExerciseIndex - 1];
-      setManualCompletedSets(manualAllExerciseSets[prevExercise.id] || []);
+      const prevIndex = manualCurrentExerciseIndex - 1;
+      setManualCurrentExerciseIndex(prevIndex);
+      const prevExercise = manualWorkoutData.exercises[prevIndex];
+      setManualCompletedSets(updatedSets[prevExercise.id] || []);
     }
+  };
+
+  const handleCloseManualWorkout = () => {
+    // If in setup phase, just close without warning
+    if (manualWorkoutStep === 'setup') {
+      setShowManualWorkout(false);
+      setManualWorkoutStep('setup');
+      return;
+    }
+
+    // Check if there are any completed sets in training phase
+    // First save current exercise sets if any
+    const currentExercise = manualWorkoutData.exercises[manualCurrentExerciseIndex];
+    const currentSets = manualCompletedSets.length > 0 ? {
+      ...manualAllExerciseSets,
+      [currentExercise.id]: manualCompletedSets
+    } : manualAllExerciseSets;
+    
+    const hasCompletedSets = Object.values(currentSets).some(sets => sets.length > 0);
+    
+    if (!hasCompletedSets) {
+      // No sets to save, just close
+      setShowManualWorkout(false);
+      setManualWorkoutStep('setup');
+      return;
+    }
+
+    // Show warning dialog
+    Alert.alert(
+      'Afslut Manuel Træning',
+      'Du har ikke-gemte sæt. Hvad vil du gøre?',
+      [
+        {
+          text: 'Annuller',
+          style: 'cancel',
+        },
+        {
+          text: 'Afslut uden at gemme',
+          style: 'destructive',
+          onPress: () => {
+            setShowManualWorkout(false);
+            setManualWorkoutStep('setup');
+            setManualWorkoutData({
+              sessionId: '',
+              sessionName: '',
+              date: new Date().toISOString().split('T')[0],
+              duration: '',
+              exercises: []
+            });
+            setManualCurrentExerciseIndex(0);
+            setManualCompletedSets([]);
+            setManualAllExerciseSets({});
+          },
+        },
+        {
+          text: 'Gem og afslut',
+          onPress: async () => {
+            try {
+              // Save current sets before completing
+              if (manualCompletedSets.length > 0) {
+                setManualAllExerciseSets(currentSets);
+              }
+              await handleCompleteManualWorkout();
+            } catch (error) {
+              console.error('Error saving manual workout:', error);
+              Alert.alert('Fejl', 'Kunne ikke gemme træning');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const renderSessionsTab = () => (
@@ -1083,7 +1242,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
         
         {/* Manual Workout Button */}
         <TouchableOpacity
-          style={[styles.manualWorkoutButton, { backgroundColor: theme.colors.secondary }]}
+          style={[styles.manualWorkoutButton, { backgroundColor: theme.colors.primary }]}
           onPress={async () => {
             console.log('🔄 Manual workout button pressed');
             console.log('📊 Current trainingSessions:', trainingSessions);
@@ -2328,10 +2487,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
               </Text>
               <TouchableOpacity
                 style={styles.endTrainingButton}
-                onPress={() => {
-                  setShowManualWorkout(false);
-                  setManualWorkoutStep('setup');
-                }}
+                onPress={handleCloseManualWorkout}
               >
                 <Ionicons name="close" size={24} color="#fff" />
               </TouchableOpacity>
@@ -2572,48 +2728,15 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
               </TouchableOpacity>
             </View>
 
-            {/* Calendar Grid */}
-            <View style={styles.weekCalendar}>
-              <Text style={[styles.calendarTitle, { color: theme.colors.text }]}>Seneste 7 dage</Text>
-              <View style={styles.weekDays}>
-                {Array.from({ length: 7 }, (_, i) => {
-                  const date = new Date();
-                  date.setDate(date.getDate() - i);
-                  const dateString = date.toISOString().split('T')[0];
-                  const isSelected = manualWorkoutData.date === dateString;
-                  
-                  return (
-                    <TouchableOpacity
-                      key={i}
-                      style={[
-                        styles.dayButton,
-                        { backgroundColor: theme.colors.card },
-                        isSelected && { backgroundColor: theme.colors.primary }
-                      ]}
-                      onPress={() => {
-                        setManualWorkoutData({ ...manualWorkoutData, date: dateString });
-                        setShowDatePicker(false);
-                      }}
-                    >
-                      <Text style={[
-                        styles.dayText,
-                        { color: theme.colors.text },
-                        isSelected && { color: '#fff', fontWeight: 'bold' }
-                      ]}>
-                        {date.getDate()}
-                      </Text>
-                      <Text style={[
-                        styles.dayLabel,
-                        { color: theme.colors.textSecondary },
-                        isSelected && { color: '#fff' }
-                      ]}>
-                        {date.toLocaleDateString('da-DK', { weekday: 'short' })}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
+            {/* Calendar Component */}
+            <Calendar
+              selectedDate={manualWorkoutData.date}
+              onDateSelect={(date) => {
+                setManualWorkoutData({ ...manualWorkoutData, date });
+                setShowDatePicker(false);
+              }}
+              theme={theme}
+            />
 
             {/* Manual Date Input */}
             <View style={styles.manualDateInput}>
