@@ -756,8 +756,8 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
     try {
       const db = getDatabase();
       
-      // Delete all related data first
-      await db.runAsync('DELETE FROM workout_sets WHERE workout_exercise_id IN (SELECT id FROM workout_exercises WHERE workout_id = ?)', [workoutId]);
+      // Delete all related data first (use correct table names)
+      await db.runAsync('DELETE FROM sets WHERE workout_exercise_id IN (SELECT id FROM workout_exercises WHERE workout_id = ?)', [workoutId]);
       await db.runAsync('DELETE FROM workout_exercises WHERE workout_id = ?', [workoutId]);
       await db.runAsync('DELETE FROM progress_data WHERE workout_id = ?', [workoutId]);
       await db.runAsync('DELETE FROM workouts WHERE id = ?', [workoutId]);
@@ -766,6 +766,8 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       set(state => ({
         workouts: state.workouts.filter(workout => workout.id !== workoutId)
       }));
+      
+      console.log('Successfully deleted workout:', workoutId);
     } catch (error) {
       console.error('Failed to delete workout:', error);
       throw error;

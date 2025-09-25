@@ -11,6 +11,7 @@ import {
   Switch,
   Platform,
   StatusBar,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -34,6 +35,7 @@ export default function ProfileScreen() {
   const [showStatsModal, setShowStatsModal] = useState(false);
   const [recentWorkouts, setRecentWorkouts] = useState<Array<any>>([]);
   const [showWorkoutLogModal, setShowWorkoutLogModal] = useState(false);
+  const [longPressedWorkout, setLongPressedWorkout] = useState<any>(null);
   const [editForm, setEditForm] = useState({
     name: '',
     weight: '',
@@ -114,6 +116,36 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('Error loading all workouts:', error);
     }
+  };
+
+  const handleDeleteWorkout = async (workout: any) => {
+    Alert.alert(
+      'Slet Træning',
+      `Er du sikker på at du vil slette træningen "${workout.name}"? Denne handling kan ikke fortrydes.`,
+      [
+        { text: 'Annuller', style: 'cancel' },
+        { 
+          text: 'Slet', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { deleteWorkout } = useExerciseStore.getState();
+              await deleteWorkout(workout.id);
+              
+              // Refresh data
+              await loadRecentWorkouts();
+              await loadAllWorkouts();
+              
+              Alert.alert('Succes', 'Træningen blev slettet');
+              setLongPressedWorkout(null);
+            } catch (error) {
+              console.error('Error deleting workout:', error);
+              Alert.alert('Fejl', 'Kunne ikke slette træningen');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const loadProfile = async () => {
@@ -507,7 +539,12 @@ export default function ProfileScreen() {
           {recentWorkouts.length > 0 ? (
             <View style={styles.workoutLogContainer}>
               {recentWorkouts.slice(0, 3).map((workout, index) => (
-                <View key={workout.id} style={[styles.workoutLogItem, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+                <TouchableOpacity 
+                  key={workout.id} 
+                  style={[styles.workoutLogItem, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+                  onLongPress={() => handleDeleteWorkout(workout)}
+                  activeOpacity={0.7}
+                >
                   <View style={styles.workoutLogHeader}>
                     <View style={styles.workoutLogInfo}>
                       <Text style={[styles.workoutLogName, { color: theme.colors.text }]} numberOfLines={1}>
@@ -547,7 +584,7 @@ export default function ProfileScreen() {
                       </Text>
                     </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           ) : (
@@ -831,7 +868,12 @@ export default function ProfileScreen() {
               <ScrollView style={styles.workoutLogModalContent}>
                 {recentWorkouts.length > 0 ? (
                   recentWorkouts.map((workout, index) => (
-                    <View key={workout.id} style={[styles.workoutLogItem, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow, marginBottom: 12 }]}>
+                    <TouchableOpacity 
+                      key={workout.id} 
+                      style={[styles.workoutLogItem, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow, marginBottom: 12 }]}
+                      onLongPress={() => handleDeleteWorkout(workout)}
+                      activeOpacity={0.7}
+                    >
                       <View style={styles.workoutLogHeader}>
                         <View style={styles.workoutLogInfo}>
                           <Text style={[styles.workoutLogName, { color: theme.colors.text }]} numberOfLines={1}>
@@ -880,7 +922,7 @@ export default function ProfileScreen() {
                           </Text>
                         </View>
                       )}
-                    </View>
+                    </TouchableOpacity>
                   ))
                 ) : (
                   <View style={[styles.emptyWorkoutLog, { backgroundColor: theme.colors.card }]}>
