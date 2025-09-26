@@ -265,12 +265,13 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
   // Calculate progression data for sessions, muscle groups, and exercises
   const calculateProgressionData = async () => {
     try {
+      console.log('Starting progression data calculation...');
       const db = (await import('../database')).getDatabase();
       
       // Get all sets with workout and exercise data
       const setsData = await db.getAllAsync(`
         SELECT 
-          s.id, s.reps, s.weight, s.created_at,
+          s.id, s.reps, s.weight, s.order_index,
           w.date, w.session_id, w.name as workout_name,
           e.name as exercise_name, e.muscle_group_id,
           ts.name as session_name
@@ -280,15 +281,30 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
         JOIN exercises e ON we.exercise_id = e.id
         LEFT JOIN training_sessions ts ON w.session_id = ts.id
         WHERE w.completed = 1
-        ORDER BY w.date ASC, s.created_at ASC
+        ORDER BY w.date ASC, s.order_index ASC
       `);
 
+      console.log('Found sets data:', setsData?.length || 0, 'records');
+
+      if (!setsData || setsData.length === 0) {
+        console.log('No sets data found, setting empty progression data');
+        setProgressionData({
+          general: [],
+          sessions: {},
+          muscleGroups: {},
+          exercises: {}
+        });
+        return;
+      }
+
+      console.log('Processing progression data...');
       // Process data for different progression types
       const generalProgression = calculateGeneralProgression(setsData);
       const sessionProgression = calculateSessionProgression(setsData);
       const muscleGroupProgression = calculateMuscleGroupProgression(setsData);
       const exerciseProgression = calculateExerciseProgression(setsData);
 
+      console.log('Progression data calculated successfully');
       setProgressionData({
         general: generalProgression,
         sessions: sessionProgression,
@@ -297,6 +313,13 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
       });
     } catch (error) {
       console.error('Error calculating progression data:', error);
+      // Set empty progression data on error
+      setProgressionData({
+        general: [],
+        sessions: {},
+        muscleGroups: {},
+        exercises: {}
+      });
     }
   };
 
@@ -1103,14 +1126,24 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
   };
 
   const renderProgressionTab = () => {
-    return (
-      <View style={styles.tabContent}>
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Progression Tracking</Text>
-          <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>
-            Se dit fremskridt over tid
-          </Text>
+    // Add error boundary and loading check
+    if (isLoading) {
+      return (
+        <View style={styles.tabContent}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Loader progression data...</Text>
         </View>
+      );
+    }
+
+    try {
+      return (
+        <View style={styles.tabContent}>
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Progression Tracking</Text>
+            <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>
+              Se dit fremskridt over tid
+            </Text>
+          </View>
 
         {/* Progression Sub-Tabs */}
         <View style={[styles.progressionTabNavigation, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
@@ -1118,7 +1151,12 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
             style={[styles.progressionTabButton, progressionTab === 'general' && { backgroundColor: theme.colors.primary }]}
             onPress={() => setProgressionTab('general')}
           >
-            <Text style={[styles.progressionTabText, { color: progressionTab === 'general' ? '#fff' : theme.colors.text }]}>
+            <Text 
+              style={[styles.progressionTabText, { color: progressionTab === 'general' ? '#fff' : theme.colors.text }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.8}
+            >
               Generel
             </Text>
           </TouchableOpacity>
@@ -1127,7 +1165,12 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
             style={[styles.progressionTabButton, progressionTab === 'sessions' && { backgroundColor: theme.colors.primary }]}
             onPress={() => setProgressionTab('sessions')}
           >
-            <Text style={[styles.progressionTabText, { color: progressionTab === 'sessions' ? '#fff' : theme.colors.text }]}>
+            <Text 
+              style={[styles.progressionTabText, { color: progressionTab === 'sessions' ? '#fff' : theme.colors.text }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.8}
+            >
               Sessioner
             </Text>
           </TouchableOpacity>
@@ -1136,7 +1179,12 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
             style={[styles.progressionTabButton, progressionTab === 'musclegroups' && { backgroundColor: theme.colors.primary }]}
             onPress={() => setProgressionTab('musclegroups')}
           >
-            <Text style={[styles.progressionTabText, { color: progressionTab === 'musclegroups' ? '#fff' : theme.colors.text }]}>
+            <Text 
+              style={[styles.progressionTabText, { color: progressionTab === 'musclegroups' ? '#fff' : theme.colors.text }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.8}
+            >
               Muskler
             </Text>
           </TouchableOpacity>
@@ -1145,7 +1193,12 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
             style={[styles.progressionTabButton, progressionTab === 'exercises' && { backgroundColor: theme.colors.primary }]}
             onPress={() => setProgressionTab('exercises')}
           >
-            <Text style={[styles.progressionTabText, { color: progressionTab === 'exercises' ? '#fff' : theme.colors.text }]}>
+            <Text 
+              style={[styles.progressionTabText, { color: progressionTab === 'exercises' ? '#fff' : theme.colors.text }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.8}
+            >
               Øvelser
             </Text>
           </TouchableOpacity>
@@ -1157,11 +1210,23 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
         {progressionTab === 'musclegroups' && renderMuscleGroupProgression()}
         {progressionTab === 'exercises' && renderExerciseProgression()}
       </View>
-    );
+      );
+    } catch (error) {
+      console.error('Error rendering progression tab:', error);
+      return (
+        <View style={styles.tabContent}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Fejl</Text>
+          <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>
+            Der opstod en fejl ved indlæsning af progression data. Prøv igen senere.
+          </Text>
+        </View>
+      );
+    }
   };
 
   const renderGeneralProgression = () => {
-    const generalData = progressionData.general || [];
+    try {
+      const generalData = progressionData.general || [];
     
     if (generalData.length === 0) {
       return (
@@ -1264,6 +1329,16 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
         </View>
       </View>
     );
+    } catch (error) {
+      console.error('Error rendering general progression:', error);
+      return (
+        <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
+          <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+            Fejl ved indlæsning af general progression
+          </Text>
+        </View>
+      );
+    }
   };
 
   const renderSessionProgression = () => {
@@ -1602,7 +1677,12 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
             size={20} 
             color={activeTab === 'overview' ? theme.colors.primary : theme.colors.textSecondary} 
           />
-          <Text style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'overview' && { color: theme.colors.primary, fontWeight: '600' }]}>
+          <Text 
+            style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'overview' && { color: theme.colors.primary, fontWeight: '600' }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit={true}
+            minimumFontScale={0.8}
+          >
             Oversigt
           </Text>
         </TouchableOpacity>
@@ -1616,7 +1696,12 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
             size={20} 
             color={activeTab === 'analytics' ? theme.colors.primary : theme.colors.textSecondary} 
           />
-          <Text style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'analytics' && { color: theme.colors.primary, fontWeight: '600' }]}>
+          <Text 
+            style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'analytics' && { color: theme.colors.primary, fontWeight: '600' }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit={true}
+            minimumFontScale={0.8}
+          >
             Analyser
           </Text>
         </TouchableOpacity>
@@ -1630,7 +1715,12 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
             size={20} 
             color={activeTab === 'achievements' ? theme.colors.primary : theme.colors.textSecondary} 
           />
-          <Text style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'achievements' && { color: theme.colors.primary, fontWeight: '600' }]}>
+          <Text 
+            style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'achievements' && { color: theme.colors.primary, fontWeight: '600' }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit={true}
+            minimumFontScale={0.8}
+          >
             Præstationer
           </Text>
         </TouchableOpacity>
@@ -1644,7 +1734,12 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
             size={20} 
             color={activeTab === 'calendar' ? theme.colors.primary : theme.colors.textSecondary} 
           />
-          <Text style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'calendar' && { color: theme.colors.primary, fontWeight: '600' }]}>
+          <Text 
+            style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'calendar' && { color: theme.colors.primary, fontWeight: '600' }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit={true}
+            minimumFontScale={0.8}
+          >
             Kalender
           </Text>
         </TouchableOpacity>
@@ -1658,7 +1753,12 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
             size={20} 
             color={activeTab === 'progression' ? theme.colors.primary : theme.colors.textSecondary} 
           />
-          <Text style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'progression' && { color: theme.colors.primary, fontWeight: '600' }]}>
+          <Text 
+            style={[styles.tabText, { color: theme.colors.textSecondary }, activeTab === 'progression' && { color: theme.colors.primary, fontWeight: '600' }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit={true}
+            minimumFontScale={0.8}
+          >
             Progression
           </Text>
         </TouchableOpacity>
@@ -1908,18 +2008,21 @@ const styles = StyleSheet.create({
   tabButton: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 8,
     borderRadius: 8,
-    marginHorizontal: 4,
+    marginHorizontal: 2,
+    minWidth: 0,
   },
   activeTabButton: {
     backgroundColor: '#f0f8ff',
   },
   tabText: {
-    fontSize: 12,
+    fontSize: 10,
     color: '#666',
-    marginTop: 4,
+    marginTop: 2,
     fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 12,
   },
   activeTabText: {
     color: '#007AFF',
@@ -2562,14 +2665,17 @@ const styles = StyleSheet.create({
   },
   progressionTabButton: {
     flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
     borderRadius: 8,
     alignItems: 'center',
+    minWidth: 0,
   },
   progressionTabText: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 12,
   },
   progressionContent: {
     paddingHorizontal: 16,
