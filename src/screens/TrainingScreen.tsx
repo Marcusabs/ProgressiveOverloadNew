@@ -769,6 +769,17 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
             reason: 'Sidste træning var høje reps. Prøv at øge vægten og reducere reps.',
             type: 'weight'
           };
+        } else if (lastMaxReps >= 10) {
+          suggestion = {
+            exerciseId: currentExercise.id,
+            exerciseName: currentExercise.name,
+            currentMaxWeight: lastMaxWeight,
+            currentMaxReps: lastMaxReps,
+            suggestedWeight: lastMaxWeight + 2.5,
+            suggestedReps: 8,
+            reason: 'Høje reps opnået. Øg vægten og reducer til 8 reps for bedre styrke.',
+            type: 'weight'
+          };
         } else if (lastMaxReps >= 8) {
           suggestion = {
             exerciseId: currentExercise.id,
