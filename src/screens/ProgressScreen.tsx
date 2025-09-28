@@ -212,6 +212,14 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
         totalSets += workout.total_sets || 0;
       });
       
+      // Debug logging for intensity calculation
+      console.log(`Calendar Intensity Debug for ${date}:`, {
+        totalDuration,
+        totalExercises, 
+        totalSets,
+        dayWorkouts: dayWorkouts.length
+      });
+      
       // Calculate intensity based on multiple factors
       let intensity = 0;
       
@@ -242,6 +250,9 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
       else if (weightedScore >= 1.0) intensity = 2; // Medium (Yellow)
       else if (weightedScore > 0) intensity = 1; // Lav (Light green)
       else intensity = 0; // Ingen aktivitet (Gray)
+      
+      console.log(`  → Scores: duration=${durationScore}, exercise=${exerciseScore}, sets=${setScore}`);
+      console.log(`  → WeightedScore: ${weightedScore}, Intensity: ${intensity}, Color: ${getIntensityColor(intensity)}`);
       
       heatMap[date] = {
         marked: true,
@@ -736,8 +747,8 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
         </View>
         <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
           <Ionicons name="barbell" size={24} color={theme.colors.primary} />
-          <Text style={[styles.statNumber, { color: theme.colors.text }]}>{getTrainingStats().totalVolume}</Text>
-          <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Total Volumen</Text>
+          <Text style={[styles.statNumber, { color: theme.colors.text }]}>{getTrainingStats().totalWorkouts}</Text>
+          <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Træninger</Text>
         </View>
       </View>
 
@@ -829,10 +840,10 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
 
       {/* Volume Tracking */}
       <View style={[styles.analyticsCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-        <Text style={[styles.analyticsTitle, { color: theme.colors.text }]}>Volumen Tracking</Text>
+        <Text style={[styles.analyticsTitle, { color: theme.colors.text }]}>Trænings Statistik</Text>
         <View style={styles.analyticsRow}>
-          <Text style={[styles.analyticsLabel, { color: theme.colors.text }]}>Total Volumen:</Text>
-          <Text style={[styles.analyticsValue, { color: theme.colors.primary }]}>{getTrainingStats().totalVolume} kg</Text>
+          <Text style={[styles.analyticsLabel, { color: theme.colors.text }]}>Gennemsnitlige Sets:</Text>
+          <Text style={[styles.analyticsValue, { color: theme.colors.primary }]}>{Math.round(getTrainingStats().totalVolume / getTrainingStats().totalWorkouts) || 0}</Text>
         </View>
         <View style={styles.analyticsRow}>
           <Text style={[styles.analyticsLabel, { color: theme.colors.text }]}>Gennemsnit Vægt:</Text>
@@ -1022,8 +1033,8 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
               <Text style={[styles.statsSummaryLabel, { color: theme.colors.textSecondary }]}>Max Vægt</Text>
             </View>
             <View style={styles.statsSummaryItem}>
-              <Text style={[styles.statsSummaryValue, { color: theme.colors.primary }]}>{Math.round(userStats.totalVolume)}kg</Text>
-              <Text style={[styles.statsSummaryLabel, { color: theme.colors.textSecondary }]}>Total Volumen</Text>
+              <Text style={[styles.statsSummaryValue, { color: theme.colors.primary }]}>{Math.round(userStats.averageWeight)}kg</Text>
+              <Text style={[styles.statsSummaryLabel, { color: theme.colors.textSecondary }]}>Gennemsnit Vægt</Text>
             </View>
           </View>
         </View>
@@ -1290,40 +1301,40 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
           <View style={[styles.progressionStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
             <Ionicons name="fitness" size={24} color={theme.colors.primary} />
             <Text style={[styles.progressionStatValue, { color: theme.colors.text }]}>
-              {generalData[generalData.length - 1]?.totalVolume || 0}
+              {generalData[generalData.length - 1]?.setCount || 0}
             </Text>
             <Text style={[styles.progressionStatLabel, { color: theme.colors.textSecondary }]}>
-              Total Volume (kg)
+              Sets i Dag
             </Text>
           </View>
           
           <View style={[styles.progressionStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
             <Ionicons name="barbell" size={24} color={theme.colors.secondary} />
             <Text style={[styles.progressionStatValue, { color: theme.colors.text }]}>
-              {generalData[generalData.length - 1]?.maxWeight || 0}
+              {generalData[generalData.length - 1]?.maxWeight || 0}kg
             </Text>
             <Text style={[styles.progressionStatLabel, { color: theme.colors.textSecondary }]}>
-              Maksimal Vægt (kg)
+              Seneste Max
             </Text>
           </View>
           
           <View style={[styles.progressionStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
             <Ionicons name="repeat" size={24} color={theme.colors.accent} />
             <Text style={[styles.progressionStatValue, { color: theme.colors.text }]}>
-              {generalData[generalData.length - 1]?.totalReps || 0}
+              {generalData.length}
             </Text>
             <Text style={[styles.progressionStatLabel, { color: theme.colors.textSecondary }]}>
-              Total Reps
+              Træningsdage
             </Text>
           </View>
           
           <View style={[styles.progressionStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
             <Ionicons name="list" size={24} color={theme.colors.primary} />
             <Text style={[styles.progressionStatValue, { color: theme.colors.text }]}>
-              {generalData[generalData.length - 1]?.setCount || 0}
+              {generalData[generalData.length - 1]?.exerciseCount || 0}
             </Text>
             <Text style={[styles.progressionStatLabel, { color: theme.colors.textSecondary }]}>
-              Total Sæt
+              Øvelser
             </Text>
           </View>
         </View>
@@ -1374,7 +1385,7 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
               </Text>
               <View style={styles.progressionItemStats}>
                 <Text style={[styles.progressionItemStat, { color: theme.colors.primary }]}>
-                  {session.progression[session.progression.length - 1]?.totalVolume || 0} kg volume
+                  {session.progression[session.progression.length - 1]?.setCount || 0} sets
                 </Text>
               </View>
             </TouchableOpacity>
@@ -1417,7 +1428,7 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
               </Text>
               <View style={styles.progressionItemStats}>
                 <Text style={[styles.progressionItemStat, { color: theme.colors.secondary }]}>
-                  {muscleGroup.progression[muscleGroup.progression.length - 1]?.totalVolume || 0} kg volume
+                  {muscleGroup.progression[muscleGroup.progression.length - 1]?.maxWeight || 0}kg max
                 </Text>
               </View>
             </TouchableOpacity>

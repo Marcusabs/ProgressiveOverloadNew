@@ -451,7 +451,9 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         duration: row.duration,
         notes: row.notes,
         completed: row.completed === 1,
-        created_at: row.created_at
+        created_at: row.created_at,
+        exercise_count: row.exercise_count,
+        total_sets: row.total_sets
       }));
       
       set({ workouts });

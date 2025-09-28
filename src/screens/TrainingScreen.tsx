@@ -763,6 +763,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
             exerciseId: currentExercise.id,
             exerciseName: currentExercise.name,
             currentMaxWeight: lastMaxWeight,
+            currentMaxReps: lastMaxReps,
             suggestedWeight: lastMaxWeight + 2.5,
             suggestedReps: 8,
             reason: 'Sidste træning var høje reps. Prøv at øge vægten og reducere reps.',
@@ -773,6 +774,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
             exerciseId: currentExercise.id,
             exerciseName: currentExercise.name,
             currentMaxWeight: lastMaxWeight,
+            currentMaxReps: lastMaxReps,
             suggestedWeight: lastMaxWeight + 2.5,
             suggestedReps: lastMaxReps,
             reason: 'Øg vægten med 2.5kg fra sidste træning.',
@@ -783,6 +785,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
             exerciseId: currentExercise.id,
             exerciseName: currentExercise.name,
             currentMaxWeight: lastMaxWeight,
+            currentMaxReps: lastMaxReps,
             suggestedWeight: lastMaxWeight,
             suggestedReps: lastMaxReps + 1,
             reason: 'Øg reps med 1 fra sidste træning.',
@@ -799,6 +802,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
             exerciseId: currentExercise.id,
             exerciseName: currentExercise.name,
             currentMaxWeight,
+            currentMaxReps,
             suggestedWeight: currentMaxWeight + 2.5,
             suggestedReps: Math.max(6, currentMaxReps - 1),
             reason: `Fremragende! Du øgede vægten med ${weightImprovement}kg. Prøv at øge med yderligere 2.5kg.`,
@@ -809,6 +813,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
             exerciseId: currentExercise.id,
             exerciseName: currentExercise.name,
             currentMaxWeight,
+            currentMaxReps,
             suggestedWeight: currentMaxWeight + 2.5,
             suggestedReps: currentMaxReps,
             reason: `Godt! Du øgede reps med ${repsImprovement}. Prøv nu at øge vægten.`,
@@ -819,6 +824,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
             exerciseId: currentExercise.id,
             exerciseName: currentExercise.name,
             currentMaxWeight,
+            currentMaxReps,
             suggestedWeight: currentMaxWeight,
             suggestedReps: currentMaxReps,
             reason: 'Behold nuværende vægt og reps. Fokusér på form og konsistens.',
@@ -2050,7 +2056,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                             <View style={styles.suggestionValue}>
                               <Text style={[styles.suggestionLabel, { color: theme.colors.textSecondary }]}>Nuværende</Text>
                               <Text style={[styles.suggestionValueText, { color: theme.colors.text }]}>
-                                {suggestion.currentMaxWeight}kg × {completedSets.length > 0 ? Math.max(...completedSets.map(s => s.reps)) : '?'} reps
+                                {completedSets.length > 0 ? Math.max(...completedSets.map(s => s.weight)) : suggestion.currentMaxWeight}kg × {completedSets.length > 0 ? Math.max(...completedSets.map(s => s.reps)) : (suggestion.currentMaxReps || '?')} reps
                               </Text>
                             </View>
                             <Ionicons name="arrow-forward" size={16} color={theme.colors.textTertiary} />
