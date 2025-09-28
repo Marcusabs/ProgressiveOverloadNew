@@ -220,30 +220,35 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
         dayWorkouts: dayWorkouts.length
       });
       
-      // Calculate intensity based on multiple factors
+      // Calculate intensity based on efficiency and volume
       let intensity = 0;
       
-      // Factor 1: Duration (minutes)
-      let durationScore = 0;
-      if (totalDuration >= 90) durationScore = 3;
-      else if (totalDuration >= 60) durationScore = 2;
-      else if (totalDuration >= 30) durationScore = 1;
+      // Factor 1: Exercise density (exercises per hour)
+      let densityScore = 0;
+      if (totalDuration > 0) {
+        const exercisesPerHour = (totalExercises / totalDuration) * 60;
+        if (exercisesPerHour >= 12) densityScore = 3; // 12+ øvelser/time = meget intensiv
+        else if (exercisesPerHour >= 8) densityScore = 2; // 8+ øvelser/time = intensiv  
+        else if (exercisesPerHour >= 5) densityScore = 1; // 5+ øvelser/time = moderat
+      }
       
-      // Factor 2: Number of exercises
-      let exerciseScore = 0;
-      if (totalExercises >= 8) exerciseScore = 3;
-      else if (totalExercises >= 5) exerciseScore = 2;
-      else if (totalExercises >= 3) exerciseScore = 1;
+      // Factor 2: Set density (sets per hour)
+      let setDensityScore = 0;
+      if (totalDuration > 0) {
+        const setsPerHour = (totalSets / totalDuration) * 60;
+        if (setsPerHour >= 30) setDensityScore = 3; // 30+ sæt/time = meget intensiv
+        else if (setsPerHour >= 20) setDensityScore = 2; // 20+ sæt/time = intensiv
+        else if (setsPerHour >= 12) setDensityScore = 1; // 12+ sæt/time = moderat
+      }
       
-      // Factor 3: Total sets (if available)
-      let setScore = 0;
-      if (totalSets >= 20) setScore = 3;
-      else if (totalSets >= 12) setScore = 2;
-      else if (totalSets >= 6) setScore = 1;
+      // Factor 3: Total volume bonus (reward higher absolute volume)
+      let volumeScore = 0;
+      if (totalSets >= 20) volumeScore = 3;
+      else if (totalSets >= 12) volumeScore = 2;
+      else if (totalSets >= 6) volumeScore = 1;
       
-      // Calculate weighted intensity (0-4)
-      // Duration is most important, then exercises, then sets
-      const weightedScore = (durationScore * 0.5) + (exerciseScore * 0.3) + (setScore * 0.2);
+      // Calculate weighted intensity - prioritize efficiency over duration
+      const weightedScore = (densityScore * 0.4) + (setDensityScore * 0.4) + (volumeScore * 0.2);
       
       if (weightedScore >= 2.5) intensity = 4; // Meget høj (Red)
       else if (weightedScore >= 1.8) intensity = 3; // Høj (Orange)
@@ -251,8 +256,8 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
       else if (weightedScore > 0) intensity = 1; // Lav (Light green)
       else intensity = 0; // Ingen aktivitet (Gray)
       
-      console.log(`  → Scores: duration=${durationScore}, exercise=${exerciseScore}, sets=${setScore}`);
-      console.log(`  → WeightedScore: ${weightedScore}, Intensity: ${intensity}, Color: ${getIntensityColor(intensity)}`);
+      console.log(`  → Density Scores: exercise=${densityScore} (${totalDuration > 0 ? ((totalExercises / totalDuration) * 60).toFixed(1) : 0}/h), sets=${setDensityScore} (${totalDuration > 0 ? ((totalSets / totalDuration) * 60).toFixed(1) : 0}/h), volume=${volumeScore}`);
+      console.log(`  → WeightedScore: ${weightedScore.toFixed(2)}, Intensity: ${intensity}, Color: ${getIntensityColor(intensity)}`);
       
       heatMap[date] = {
         marked: true,
@@ -568,10 +573,10 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
 
   const getIntensityColor = (intensity: number): string => {
     switch (intensity) {
-      case 4: return '#FF4444'; // Red - Meget høj intensitet (90+ min, 8+ øvelser, 20+ sæt)
-      case 3: return '#FF8800'; // Orange - Høj intensitet (60+ min, 5+ øvelser, 12+ sæt)  
-      case 2: return '#FFDD00'; // Yellow - Medium intensitet (30+ min, 3+ øvelser, 6+ sæt)
-      case 1: return '#88FF88'; // Light green - Lav intensitet (kort træning)
+      case 4: return '#FF4444'; // Red - Meget høj intensitet (12+ øvelser/time, 30+ sæt/time)
+      case 3: return '#FF8800'; // Orange - Høj intensitet (8+ øvelser/time, 20+ sæt/time)  
+      case 2: return '#FFDD00'; // Yellow - Medium intensitet (5+ øvelser/time, 12+ sæt/time)
+      case 1: return '#88FF88'; // Light green - Lav intensitet (lavere effektivitet)
       default: return '#E0E0E0'; // Gray - Ingen aktivitet
     }
   };
