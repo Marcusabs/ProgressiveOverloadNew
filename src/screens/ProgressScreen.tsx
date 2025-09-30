@@ -30,7 +30,7 @@ type ProgressScreenRouteProp = RouteProp<RootTabParamList, 'Progress'>;
 
 export default function ProgressScreen({ route }: { route?: ProgressScreenRouteProp }) {
   const navigation = useNavigation<ProgressScreenNavigationProp>();
-  const { exercises, trainingSessions, workouts } = useExerciseStore();
+  const { exercises, trainingSessions, workouts, muscleGroups = [] } = useExerciseStore();
   const { progressData, getRecentWorkouts } = useProgressStore();
   const { achievements, userStats, loadAchievements, loadUserStats, checkAchievements, getAchievementsByCategory, getUnlockedAchievements } = useAchievementsStore();
   const { theme, isDark } = useTheme();
@@ -47,7 +47,9 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
   const [editingWorkout, setEditingWorkout] = useState(false);
   const [workoutSets, setWorkoutSets] = useState<any[]>([]);
   const [progressionTab, setProgressionTab] = useState<'general' | 'sessions' | 'musclegroups' | 'exercises'>('general');
-  const [selectedProgressionItem, setSelectedProgressionItem] = useState<any>(null);
+  const [selectedSession, setSelectedSession] = useState<string | null>(null);
+  const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<string | null>(null);
+  const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [progressionData, setProgressionData] = useState<any>({});
   const screenWidth = Dimensions.get('window').width;
 
@@ -707,14 +709,6 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
     };
   };
 
-  const muscleGroups = [
-    { id: '1', name: 'Bryst', color: '#FF6B6B' },
-    { id: '2', name: 'Skulder', color: '#4ECDC4' },
-    { id: '3', name: 'Triceps', color: '#45B7D1' },
-    { id: '4', name: 'Ben', color: '#96CEB4' },
-    { id: '5', name: 'Biceps', color: '#FFEAA7' },
-    { id: '6', name: 'Ryg', color: '#DDA0DD' },
-  ];
 
   const renderOverviewTab = () => (
     <View style={styles.tabContent}>
@@ -844,7 +838,6 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
   const renderAnalyticsTab = () => {
     try {
       const stats = getTrainingStats();
-      const { muscleGroups = [] } = useExerciseStore();
       
       return (
         <View style={styles.tabContent}>
@@ -1274,6 +1267,20 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
     }
   };
 
+  // Helper function to calculate percentage improvement
+  const calculatePercentageImprovement = (data: any[], valueKey: string) => {
+    if (!data || data.length < 2) return data?.map(() => 0) || [0];
+    
+    const baseValue = data[0]?.[valueKey];
+    if (!baseValue || baseValue === 0) return data.map(() => 0);
+    
+    return data.map((item: any) => {
+      if (!item || typeof item[valueKey] !== 'number') return 0;
+      const improvement = ((item[valueKey] - baseValue) / baseValue) * 100;
+      return Math.round(improvement * 10) / 10; // Round to 1 decimal place
+    });
+  };
+
   const renderGeneralProgression = () => {
     try {
       const generalData = progressionData.general || [];
@@ -1292,24 +1299,26 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
       );
     }
 
-    // Prepare chart data for progressive overload (max weight progression)
+    // Calculate percentage improvements for max weight
+    const maxWeightPercentages = calculatePercentageImprovement(generalData.slice(-10), 'maxWeight');
     const maxWeightData = {
       labels: generalData.slice(-10).map((item: any) => new Date(item.date).toLocaleDateString('da-DK', { month: 'short', day: 'numeric' })),
       datasets: [
         {
-          data: generalData.slice(-10).map((item: any) => item.maxWeight),
+          data: maxWeightPercentages,
           color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
           strokeWidth: 3
         }
       ]
     };
 
-    // Prepare average weight progression data
+    // Calculate percentage improvements for average weight
+    const avgWeightPercentages = calculatePercentageImprovement(generalData.slice(-10), 'avgWeight');
     const avgWeightData = {
       labels: generalData.slice(-10).map((item: any) => new Date(item.date).toLocaleDateString('da-DK', { month: 'short', day: 'numeric' })),
       datasets: [
         {
-          data: generalData.slice(-10).map((item: any) => item.avgWeight),
+          data: avgWeightPercentages,
           color: (opacity = 1) => `rgba(78, 205, 196, ${opacity})`,
           strokeWidth: 3
         }
@@ -1320,13 +1329,13 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
       <View style={styles.progressionContent}>
         {/* Max Weight Progression Chart */}
         <View style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-          <Text style={[styles.chartTitle, { color: theme.colors.text }]}>Maksimal Vægt Progression</Text>
-          <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>Den højeste vægt løftet per træning</Text>
+          <Text style={[styles.chartTitle, { color: theme.colors.text }]}>Maksimal Vægt Forbedring</Text>
+          <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>Procent forbedring i højeste vægt løftet</Text>
           <LineChart
             data={maxWeightData}
             width={screenWidth - 80}
             height={220}
-            yAxisSuffix="kg"
+            yAxisSuffix="%"
             chartConfig={{
               backgroundColor: theme.colors.card,
               backgroundGradientFrom: theme.colors.card,
@@ -1350,13 +1359,13 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
 
         {/* Average Weight Progression Chart */}
         <View style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-          <Text style={[styles.chartTitle, { color: theme.colors.text }]}>Gennemsnitlig Vægt Progression</Text>
-          <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>Progression i gennemsnitlig træningsvægt</Text>
+          <Text style={[styles.chartTitle, { color: theme.colors.text }]}>Gennemsnitlig Vægt Forbedring</Text>
+          <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>Procent forbedring i gennemsnitlig træningsvægt</Text>
           <LineChart
             data={avgWeightData}
             width={screenWidth - 80}
             height={220}
-            yAxisSuffix="kg"
+            yAxisSuffix="%"
             chartConfig={{
               backgroundColor: theme.colors.card,
               backgroundGradientFrom: theme.colors.card,
@@ -1435,285 +1444,561 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
   };
 
   const renderSessionProgression = () => {
-    const sessionsData = progressionData.sessions || {};
-    const sessionKeys = Object.keys(sessionsData);
-    
-    if (sessionKeys.length === 0) {
+    try {
+      const sessionsData = progressionData.sessions || {};
+      const sessionKeys = Object.keys(sessionsData);
+      
+      if (sessionKeys.length === 0) {
+        return (
+          <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
+            <Ionicons name="list-outline" size={48} color={theme.colors.textTertiary} />
+            <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+              Ingen session data endnu
+            </Text>
+          </View>
+        );
+      }
+
+      // Set default selected session if none selected
+      const currentSelectedSession = selectedSession || sessionKeys[0];
+      if (!selectedSession && sessionKeys.length > 0) {
+        setSelectedSession(sessionKeys[0]);
+      }
+
+      const selectedSessionData = sessionsData[currentSelectedSession];
+      
+      if (!selectedSessionData || !selectedSessionData.progression || selectedSessionData.progression.length < 2) {
+        return (
+          <View style={styles.progressionContent}>
+            {/* Session Selector */}
+            <View style={[styles.selectorContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Vælg Session:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScroll}>
+                {sessionKeys.map(sessionId => {
+                  const session = sessionsData[sessionId];
+                  return (
+                    <TouchableOpacity
+                      key={sessionId}
+                      style={[
+                        styles.selectorButton,
+                        { backgroundColor: currentSelectedSession === sessionId ? theme.colors.primary : theme.colors.card },
+                        { borderColor: theme.colors.border }
+                      ]}
+                      onPress={() => setSelectedSession(sessionId)}
+                    >
+                      <Text style={[
+                        styles.selectorButtonText,
+                        { color: currentSelectedSession === sessionId ? '#fff' : theme.colors.text }
+                      ]}>
+                        {session.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
+              <Ionicons name="list-outline" size={48} color={theme.colors.textTertiary} />
+              <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+                For få data til graf for {selectedSessionData?.name || 'denne session'}
+              </Text>
+              <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]}>
+                Lav flere træninger med denne session for at se progression
+              </Text>
+            </View>
+          </View>
+        );
+      }
+
+      // Calculate percentage improvements for selected session
+      const sessionPercentages = calculatePercentageImprovement(selectedSessionData.progression.slice(-10), 'maxWeight');
+      const sessionChartData = {
+        labels: selectedSessionData.progression.slice(-10).map((item: any) => 
+          new Date(item.date).toLocaleDateString('da-DK', { month: 'short', day: 'numeric' })
+        ),
+        datasets: [
+          {
+            data: sessionPercentages,
+            color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
+            strokeWidth: 3
+          }
+        ]
+      };
+
       return (
-        <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
-          <Ionicons name="list-outline" size={48} color={theme.colors.textTertiary} />
-          <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
-            Ingen session data endnu
+        <View style={styles.progressionContent}>
+          {/* Session Selector */}
+          <View style={[styles.selectorContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Vælg Session:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScroll}>
+              {sessionKeys.map(sessionId => {
+                const session = sessionsData[sessionId];
+                return (
+                  <TouchableOpacity
+                    key={sessionId}
+                    style={[
+                      styles.selectorButton,
+                      { backgroundColor: currentSelectedSession === sessionId ? theme.colors.primary : theme.colors.card },
+                      { borderColor: theme.colors.border }
+                    ]}
+                    onPress={() => setSelectedSession(sessionId)}
+                  >
+                    <Text style={[
+                      styles.selectorButtonText,
+                      { color: currentSelectedSession === sessionId ? '#fff' : theme.colors.text }
+                    ]}>
+                      {session.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          {/* Selected Session Progression Chart */}
+          <View style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <Text style={[styles.chartTitle, { color: theme.colors.text }]}>{selectedSessionData.name} Forbedring</Text>
+            <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>Procent forbedring i maksimal vægt ({selectedSessionData.progression.length} træninger)</Text>
+            <LineChart
+              data={sessionChartData}
+              width={screenWidth - 80}
+              height={220}
+              yAxisSuffix="%"
+              chartConfig={{
+                backgroundColor: theme.colors.card,
+                backgroundGradientFrom: theme.colors.card,
+                backgroundGradientTo: theme.colors.card,
+                decimalPlaces: 1,
+                color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
+                labelColor: (opacity = 1) => theme.colors.text,
+                style: {
+                  borderRadius: 16
+                },
+                propsForDots: {
+                  r: "6",
+                  strokeWidth: "2",
+                  stroke: "#FF6B35"
+                }
+              }}
+              bezier
+              style={styles.chart}
+            />
+          </View>
+
+          {/* Stats Cards */}
+          <View style={styles.statsGrid}>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Træninger</Text>
+              <Text style={[styles.statValue, { color: theme.colors.primary }]}>{selectedSessionData.progression.length}</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Seneste Max</Text>
+              <Text style={[styles.statValue, { color: theme.colors.secondary }]}>
+                {selectedSessionData.progression[selectedSessionData.progression.length - 1]?.maxWeight || 0}kg
+              </Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Første Max</Text>
+              <Text style={[styles.statValue, { color: theme.colors.accent }]}>
+                {selectedSessionData.progression[0]?.maxWeight || 0}kg
+              </Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Forbedring</Text>
+              <Text style={[styles.statValue, { color: theme.colors.primary }]}>
+                {sessionPercentages[sessionPercentages.length - 1] || 0}%
+              </Text>
+            </View>
+          </View>
+        </View>
+      );
+    } catch (error) {
+      console.error('Error rendering session progression:', error);
+      return (
+        <View style={styles.tabContent}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Fejl</Text>
+          <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>
+            Der opstod en fejl ved indlæsning af session data. Prøv igen senere.
           </Text>
         </View>
       );
     }
-
-    return (
-      <ScrollView style={styles.progressionContent}>
-        {sessionKeys.map(sessionId => {
-          const session = sessionsData[sessionId];
-          
-          if (!session.progression || session.progression.length < 2) {
-            return (
-              <View key={sessionId} style={[styles.progressionItemCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-                <Text style={[styles.progressionItemTitle, { color: theme.colors.text }]}>
-                  {session.name}
-                </Text>
-                <Text style={[styles.progressionItemSubtitle, { color: theme.colors.textSecondary }]}>
-                  For få data til graf ({session.progression?.length || 0} træninger)
-                </Text>
-              </View>
-            );
-          }
-
-          // Prepare chart data for this session
-          const sessionChartData = {
-            labels: session.progression.slice(-8).map((item: any) => 
-              new Date(item.date).toLocaleDateString('da-DK', { month: 'short', day: 'numeric' })
-            ),
-            datasets: [
-              {
-                data: session.progression.slice(-8).map((item: any) => item.maxWeight),
-                color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
-                strokeWidth: 3
-              }
-            ]
-          };
-
-          return (
-            <View key={sessionId} style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-              <Text style={[styles.chartTitle, { color: theme.colors.text }]}>{session.name}</Text>
-              <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>
-                Maksimal vægt progression ({session.progression.length} træninger)
-              </Text>
-              <LineChart
-                data={sessionChartData}
-                width={screenWidth - 80}
-                height={200}
-                yAxisSuffix="kg"
-                chartConfig={{
-                  backgroundColor: theme.colors.card,
-                  backgroundGradientFrom: theme.colors.card,
-                  backgroundGradientTo: theme.colors.card,
-                  decimalPlaces: 1,
-                  color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
-                  labelColor: (opacity = 1) => theme.colors.text,
-                  style: {
-                    borderRadius: 16
-                  },
-                  propsForDots: {
-                    r: "5",
-                    strokeWidth: "2",
-                    stroke: "#FF6B35"
-                  }
-                }}
-                bezier
-                style={styles.chart}
-              />
-              <View style={styles.progressionItemStats}>
-                <Text style={[styles.progressionItemStat, { color: theme.colors.primary }]}>
-                  Seneste: {session.progression[session.progression.length - 1]?.maxWeight || 0}kg
-                </Text>
-                <Text style={[styles.progressionItemStat, { color: theme.colors.secondary }]}>
-                  Fremgang: +{((session.progression[session.progression.length - 1]?.maxWeight || 0) - (session.progression[0]?.maxWeight || 0)).toFixed(1)}kg
-                </Text>
-              </View>
-            </View>
-          );
-        })}
-      </ScrollView>
-    );
   };
 
   const renderMuscleGroupProgression = () => {
-    const muscleGroupsData = progressionData.muscleGroups || {};
-    const muscleGroupKeys = Object.keys(muscleGroupsData);
-    const { muscleGroups } = useExerciseStore();
-    
-    if (muscleGroupKeys.length === 0) {
+    try {
+      const muscleGroupsData = progressionData.muscleGroups || {};
+      const muscleGroupKeys = Object.keys(muscleGroupsData);
+      
+      if (muscleGroupKeys.length === 0) {
+        return (
+          <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
+            <Ionicons name="body-outline" size={48} color={theme.colors.textTertiary} />
+            <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+              Ingen muskelgruppe data endnu
+            </Text>
+          </View>
+        );
+      }
+
+      // Set default selected muscle group if none selected
+      const currentSelectedMuscleGroup = selectedMuscleGroup || muscleGroupKeys[0];
+      if (!selectedMuscleGroup && muscleGroupKeys.length > 0) {
+        setSelectedMuscleGroup(muscleGroupKeys[0]);
+      }
+
+      const selectedMuscleGroupData = muscleGroupsData[currentSelectedMuscleGroup];
+      const muscleGroupInfo = muscleGroups.find(mg => 
+        mg.id === currentSelectedMuscleGroup || mg.id === parseInt(currentSelectedMuscleGroup) || mg.id.toString() === currentSelectedMuscleGroup
+      );
+      
+      if (!selectedMuscleGroupData || !selectedMuscleGroupData.progression || selectedMuscleGroupData.progression.length < 2) {
+        return (
+          <View style={styles.progressionContent}>
+            {/* Muscle Group Selector */}
+            <View style={[styles.selectorContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Vælg Muskelgruppe:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScroll}>
+                {muscleGroupKeys.map(muscleGroupId => {
+                  const muscleGroup = muscleGroupsData[muscleGroupId];
+                  const muscleInfo = muscleGroups.find(mg => 
+                    mg.id === muscleGroupId || mg.id === parseInt(muscleGroupId) || mg.id.toString() === muscleGroupId
+                  );
+                  return (
+                    <TouchableOpacity
+                      key={muscleGroupId}
+                      style={[
+                        styles.selectorButton,
+                        { backgroundColor: currentSelectedMuscleGroup === muscleGroupId ? theme.colors.primary : theme.colors.card },
+                        { borderColor: theme.colors.border }
+                      ]}
+                      onPress={() => setSelectedMuscleGroup(muscleGroupId)}
+                    >
+                      <Text style={[
+                        styles.selectorButtonText,
+                        { color: currentSelectedMuscleGroup === muscleGroupId ? '#fff' : theme.colors.text }
+                      ]}>
+                        {muscleInfo?.name || `Muskel ${muscleGroupId}`}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
+              <Ionicons name="body-outline" size={48} color={theme.colors.textTertiary} />
+              <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+                For få data til graf for {muscleGroupInfo?.name || 'denne muskelgruppe'}
+              </Text>
+              <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]}>
+                Træn denne muskelgruppe flere gange for at se progression
+              </Text>
+            </View>
+          </View>
+        );
+      }
+
+      // Calculate percentage improvements for selected muscle group
+      const musclePercentages = calculatePercentageImprovement(selectedMuscleGroupData.progression.slice(-10), 'maxWeight');
+      const muscleChartData = {
+        labels: selectedMuscleGroupData.progression.slice(-10).map((item: any) => 
+          new Date(item.date).toLocaleDateString('da-DK', { month: 'short', day: 'numeric' })
+        ),
+        datasets: [
+          {
+            data: musclePercentages,
+            color: (opacity = 1) => `rgba(78, 205, 196, ${opacity})`,
+            strokeWidth: 3
+          }
+        ]
+      };
+
       return (
-        <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
-          <Ionicons name="body-outline" size={48} color={theme.colors.textTertiary} />
-          <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
-            Ingen muskelgruppe data endnu
+        <View style={styles.progressionContent}>
+          {/* Muscle Group Selector */}
+          <View style={[styles.selectorContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Vælg Muskelgruppe:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScroll}>
+              {muscleGroupKeys.map(muscleGroupId => {
+                const muscleGroup = muscleGroupsData[muscleGroupId];
+                const muscleInfo = muscleGroups.find(mg => 
+                  mg.id === muscleGroupId || mg.id === parseInt(muscleGroupId) || mg.id.toString() === muscleGroupId
+                );
+                return (
+                  <TouchableOpacity
+                    key={muscleGroupId}
+                    style={[
+                      styles.selectorButton,
+                      { backgroundColor: currentSelectedMuscleGroup === muscleGroupId ? theme.colors.primary : theme.colors.card },
+                      { borderColor: theme.colors.border }
+                    ]}
+                    onPress={() => setSelectedMuscleGroup(muscleGroupId)}
+                  >
+                    <Text style={[
+                      styles.selectorButtonText,
+                      { color: currentSelectedMuscleGroup === muscleGroupId ? '#fff' : theme.colors.text }
+                    ]}>
+                      {muscleInfo?.name || `Muskel ${muscleGroupId}`}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          {/* Selected Muscle Group Progression Chart */}
+          <View style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <Text style={[styles.chartTitle, { color: theme.colors.text }]}>{muscleGroupInfo?.name || 'Muskelgruppe'} Forbedring</Text>
+            <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>Procent forbedring i maksimal vægt ({selectedMuscleGroupData.progression.length} træninger)</Text>
+            <LineChart
+              data={muscleChartData}
+              width={screenWidth - 80}
+              height={220}
+              yAxisSuffix="%"
+              chartConfig={{
+                backgroundColor: theme.colors.card,
+                backgroundGradientFrom: theme.colors.card,
+                backgroundGradientTo: theme.colors.card,
+                decimalPlaces: 1,
+                color: (opacity = 1) => `rgba(78, 205, 196, ${opacity})`,
+                labelColor: (opacity = 1) => theme.colors.text,
+                style: {
+                  borderRadius: 16
+                },
+                propsForDots: {
+                  r: "6",
+                  strokeWidth: "2",
+                  stroke: "#4ECDC4"
+                }
+              }}
+              bezier
+              style={styles.chart}
+            />
+          </View>
+
+          {/* Stats Cards */}
+          <View style={styles.statsGrid}>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Træninger</Text>
+              <Text style={[styles.statValue, { color: theme.colors.primary }]}>{selectedMuscleGroupData.progression.length}</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Seneste Max</Text>
+              <Text style={[styles.statValue, { color: theme.colors.secondary }]}>
+                {selectedMuscleGroupData.progression[selectedMuscleGroupData.progression.length - 1]?.maxWeight || 0}kg
+              </Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Første Max</Text>
+              <Text style={[styles.statValue, { color: theme.colors.accent }]}>
+                {selectedMuscleGroupData.progression[0]?.maxWeight || 0}kg
+              </Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Forbedring</Text>
+              <Text style={[styles.statValue, { color: theme.colors.primary }]}>
+                {musclePercentages[musclePercentages.length - 1] || 0}%
+              </Text>
+            </View>
+          </View>
+        </View>
+      );
+    } catch (error) {
+      console.error('Error rendering muscle group progression:', error);
+      return (
+        <View style={styles.tabContent}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Fejl</Text>
+          <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>
+            Der opstod en fejl ved indlæsning af muskelgruppe data. Prøv igen senere.
           </Text>
         </View>
       );
     }
-
-    return (
-      <ScrollView style={styles.progressionContent}>
-        {muscleGroupKeys.map(muscleGroupId => {
-          const muscleGroup = muscleGroupsData[muscleGroupId];
-          const muscleGroupInfo = muscleGroups.find(mg => mg.id === muscleGroupId);
-          
-          if (!muscleGroup.progression || muscleGroup.progression.length < 2) {
-            return (
-              <View key={muscleGroupId} style={[styles.progressionItemCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-                <Text style={[styles.progressionItemTitle, { color: theme.colors.text }]}>
-                  {muscleGroupInfo?.name || `Muskelgruppe ${muscleGroupId}`}
-                </Text>
-                <Text style={[styles.progressionItemSubtitle, { color: theme.colors.textSecondary }]}>
-                  For få data til graf ({muscleGroup.progression?.length || 0} træninger)
-                </Text>
-              </View>
-            );
-          }
-
-          // Prepare chart data for this muscle group
-          const muscleChartData = {
-            labels: muscleGroup.progression.slice(-8).map((item: any) => 
-              new Date(item.date).toLocaleDateString('da-DK', { month: 'short', day: 'numeric' })
-            ),
-            datasets: [
-              {
-                data: muscleGroup.progression.slice(-8).map((item: any) => item.maxWeight),
-                color: (opacity = 1) => `rgba(78, 205, 196, ${opacity})`,
-                strokeWidth: 3
-              }
-            ]
-          };
-
-          return (
-            <View key={muscleGroupId} style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-              <Text style={[styles.chartTitle, { color: theme.colors.text }]}>
-                {muscleGroupInfo?.name || `Muskelgruppe ${muscleGroupId}`}
-              </Text>
-              <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>
-                Maksimal vægt progression ({muscleGroup.progression.length} træninger)
-              </Text>
-              <LineChart
-                data={muscleChartData}
-                width={screenWidth - 80}
-                height={200}
-                yAxisSuffix="kg"
-                chartConfig={{
-                  backgroundColor: theme.colors.card,
-                  backgroundGradientFrom: theme.colors.card,
-                  backgroundGradientTo: theme.colors.card,
-                  decimalPlaces: 1,
-                  color: (opacity = 1) => `rgba(78, 205, 196, ${opacity})`,
-                  labelColor: (opacity = 1) => theme.colors.text,
-                  style: {
-                    borderRadius: 16
-                  },
-                  propsForDots: {
-                    r: "5",
-                    strokeWidth: "2",
-                    stroke: "#4ECDC4"
-                  }
-                }}
-                bezier
-                style={styles.chart}
-              />
-              <View style={styles.progressionItemStats}>
-                <Text style={[styles.progressionItemStat, { color: theme.colors.secondary }]}>
-                  Seneste: {muscleGroup.progression[muscleGroup.progression.length - 1]?.maxWeight || 0}kg
-                </Text>
-                <Text style={[styles.progressionItemStat, { color: theme.colors.accent }]}>
-                  Øvelser: {muscleGroup.progression[muscleGroup.progression.length - 1]?.exerciseCount || 0}
-                </Text>
-              </View>
-            </View>
-          );
-        })}
-      </ScrollView>
-    );
   };
 
   const renderExerciseProgression = () => {
-    const exercisesData = progressionData.exercises || {};
-    const exerciseKeys = Object.keys(exercisesData);
-    
-    if (exerciseKeys.length === 0) {
+    try {
+      const exercisesData = progressionData.exercises || {};
+      const exerciseKeys = Object.keys(exercisesData);
+      
+      if (exerciseKeys.length === 0) {
+        return (
+          <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
+            <Ionicons name="fitness-outline" size={48} color={theme.colors.textTertiary} />
+            <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+              Ingen øvelse data endnu
+            </Text>
+          </View>
+        );
+      }
+
+      // Set default selected exercise if none selected
+      const currentSelectedExercise = selectedExercise || exerciseKeys[0];
+      if (!selectedExercise && exerciseKeys.length > 0) {
+        setSelectedExercise(exerciseKeys[0]);
+      }
+
+      const selectedExerciseData = exercisesData[currentSelectedExercise];
+      
+      if (!selectedExerciseData || !selectedExerciseData.progression || selectedExerciseData.progression.length < 2) {
+        return (
+          <View style={styles.progressionContent}>
+            {/* Exercise Selector */}
+            <View style={[styles.selectorContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Vælg Øvelse:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScroll}>
+                {exerciseKeys.slice(0, 15).map(exerciseName => {
+                  const exercise = exercisesData[exerciseName];
+                  return (
+                    <TouchableOpacity
+                      key={exerciseName}
+                      style={[
+                        styles.selectorButton,
+                        { backgroundColor: currentSelectedExercise === exerciseName ? theme.colors.primary : theme.colors.card },
+                        { borderColor: theme.colors.border }
+                      ]}
+                      onPress={() => setSelectedExercise(exerciseName)}
+                    >
+                      <Text style={[
+                        styles.selectorButtonText,
+                        { color: currentSelectedExercise === exerciseName ? '#fff' : theme.colors.text }
+                      ]}>
+                        {exercise.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
+              <Ionicons name="fitness-outline" size={48} color={theme.colors.textTertiary} />
+              <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+                For få data til graf for {selectedExerciseData?.name || 'denne øvelse'}
+              </Text>
+              <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]}>
+                Lav denne øvelse flere gange for at se progression
+              </Text>
+            </View>
+          </View>
+        );
+      }
+
+      // Calculate percentage improvements for selected exercise
+      const exercisePercentages = calculatePercentageImprovement(selectedExerciseData.progression.slice(-10), 'maxWeight');
+      const exerciseChartData = {
+        labels: selectedExerciseData.progression.slice(-10).map((item: any) => 
+          new Date(item.date).toLocaleDateString('da-DK', { month: 'short', day: 'numeric' })
+        ),
+        datasets: [
+          {
+            data: exercisePercentages,
+            color: (opacity = 1) => `rgba(150, 206, 180, ${opacity})`,
+            strokeWidth: 3
+          }
+        ]
+      };
+
       return (
-        <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
-          <Ionicons name="fitness-outline" size={48} color={theme.colors.textTertiary} />
-          <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
-            Ingen øvelse data endnu
+        <View style={styles.progressionContent}>
+          {/* Exercise Selector */}
+          <View style={[styles.selectorContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Vælg Øvelse:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScroll}>
+              {exerciseKeys.slice(0, 15).map(exerciseName => {
+                const exercise = exercisesData[exerciseName];
+                return (
+                  <TouchableOpacity
+                    key={exerciseName}
+                    style={[
+                      styles.selectorButton,
+                      { backgroundColor: currentSelectedExercise === exerciseName ? theme.colors.primary : theme.colors.card },
+                      { borderColor: theme.colors.border }
+                    ]}
+                    onPress={() => setSelectedExercise(exerciseName)}
+                  >
+                    <Text style={[
+                      styles.selectorButtonText,
+                      { color: currentSelectedExercise === exerciseName ? '#fff' : theme.colors.text }
+                    ]}>
+                      {exercise.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          {/* Selected Exercise Progression Chart */}
+          <View style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <Text style={[styles.chartTitle, { color: theme.colors.text }]}>{selectedExerciseData.name} Forbedring</Text>
+            <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>Procent forbedring i maksimal vægt ({selectedExerciseData.progression.length} træninger)</Text>
+            <LineChart
+              data={exerciseChartData}
+              width={screenWidth - 80}
+              height={220}
+              yAxisSuffix="%"
+              chartConfig={{
+                backgroundColor: theme.colors.card,
+                backgroundGradientFrom: theme.colors.card,
+                backgroundGradientTo: theme.colors.card,
+                decimalPlaces: 1,
+                color: (opacity = 1) => `rgba(150, 206, 180, ${opacity})`,
+                labelColor: (opacity = 1) => theme.colors.text,
+                style: {
+                  borderRadius: 16
+                },
+                propsForDots: {
+                  r: "6",
+                  strokeWidth: "2",
+                  stroke: "#96CEB4"
+                }
+              }}
+              bezier
+              style={styles.chart}
+            />
+          </View>
+
+          {/* Stats Cards */}
+          <View style={styles.statsGrid}>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Træninger</Text>
+              <Text style={[styles.statValue, { color: theme.colors.primary }]}>{selectedExerciseData.progression.length}</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Seneste Max</Text>
+              <Text style={[styles.statValue, { color: theme.colors.secondary }]}>
+                {selectedExerciseData.progression[selectedExerciseData.progression.length - 1]?.maxWeight || 0}kg
+              </Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Første Max</Text>
+              <Text style={[styles.statValue, { color: theme.colors.accent }]}>
+                {selectedExerciseData.progression[0]?.maxWeight || 0}kg
+              </Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Forbedring</Text>
+              <Text style={[styles.statValue, { color: theme.colors.primary }]}>
+                {exercisePercentages[exercisePercentages.length - 1] || 0}%
+              </Text>
+            </View>
+          </View>
+        </View>
+      );
+    } catch (error) {
+      console.error('Error rendering exercise progression:', error);
+      return (
+        <View style={styles.tabContent}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Fejl</Text>
+          <Text style={[styles.sectionSubtitle, { color: theme.colors.textSecondary }]}>
+            Der opstod en fejl ved indlæsning af øvelse data. Prøv igen senere.
           </Text>
         </View>
       );
     }
-
-    return (
-      <ScrollView style={styles.progressionContent}>
-        {exerciseKeys.slice(0, 10).map(exerciseName => {
-          const exercise = exercisesData[exerciseName];
-          
-          if (!exercise.progression || exercise.progression.length < 2) {
-            return (
-              <View key={exerciseName} style={[styles.progressionItemCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-                <Text style={[styles.progressionItemTitle, { color: theme.colors.text }]}>
-                  {exercise.name}
-                </Text>
-                <Text style={[styles.progressionItemSubtitle, { color: theme.colors.textSecondary }]}>
-                  For få data til graf ({exercise.progression?.length || 0} træninger)
-                </Text>
-              </View>
-            );
-          }
-
-          // Prepare chart data for this exercise
-          const exerciseChartData = {
-            labels: exercise.progression.slice(-8).map((item: any) => 
-              new Date(item.date).toLocaleDateString('da-DK', { month: 'short', day: 'numeric' })
-            ),
-            datasets: [
-              {
-                data: exercise.progression.slice(-8).map((item: any) => item.maxWeight),
-                color: (opacity = 1) => `rgba(150, 206, 180, ${opacity})`,
-                strokeWidth: 3
-              }
-            ]
-          };
-
-          return (
-            <View key={exerciseName} style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-              <Text style={[styles.chartTitle, { color: theme.colors.text }]}>
-                {exercise.name}
-              </Text>
-              <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>
-                Maksimal vægt progression ({exercise.progression.length} træninger)
-              </Text>
-              <LineChart
-                data={exerciseChartData}
-                width={screenWidth - 80}
-                height={200}
-                yAxisSuffix="kg"
-                chartConfig={{
-                  backgroundColor: theme.colors.card,
-                  backgroundGradientFrom: theme.colors.card,
-                  backgroundGradientTo: theme.colors.card,
-                  decimalPlaces: 1,
-                  color: (opacity = 1) => `rgba(150, 206, 180, ${opacity})`,
-                  labelColor: (opacity = 1) => theme.colors.text,
-                  style: {
-                    borderRadius: 16
-                  },
-                  propsForDots: {
-                    r: "5",
-                    strokeWidth: "2",
-                    stroke: "#96CEB4"
-                  }
-                }}
-                bezier
-                style={styles.chart}
-              />
-              <View style={styles.progressionItemStats}>
-                <Text style={[styles.progressionItemStat, { color: theme.colors.accent }]}>
-                  Seneste: {exercise.progression[exercise.progression.length - 1]?.maxWeight || 0}kg
-                </Text>
-                <Text style={[styles.progressionItemStat, { color: theme.colors.primary }]}>
-                  Gennemsnit: {exercise.progression[exercise.progression.length - 1]?.avgWeight || 0}kg
-                </Text>
-              </View>
-            </View>
-          );
-        })}
-      </ScrollView>
-    );
   };
 
   const renderCalendarTab = () => {
@@ -3021,5 +3306,37 @@ const styles = StyleSheet.create({
   emptyStateSubtext: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  selectorContainer: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    marginHorizontal: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  selectorLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  selectorScroll: {
+    flexDirection: 'row',
+  },
+  selectorButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 8,
+    borderWidth: 1,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  selectorButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
