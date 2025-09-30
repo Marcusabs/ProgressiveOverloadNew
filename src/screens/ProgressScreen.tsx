@@ -1283,154 +1283,204 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
 
   const renderGeneralProgression = () => {
     try {
-      const generalData = progressionData.general || [];
-    
-    if (generalData.length === 0) {
+      // Get session-level data instead of general exercise data
+      const sessionsData = progressionData.sessions || {};
+      const sessionKeys = Object.keys(sessionsData);
+      
+      // Filter sessions that have at least 2 workouts (needed for progression)
+      const validSessions = sessionKeys.filter(sessionId => {
+        const session = sessionsData[sessionId];
+        return session.progression && session.progression.length >= 2;
+      });
+
+      if (validSessions.length === 0) {
+        return (
+          <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
+            <Ionicons name="trending-up-outline" size={48} color={theme.colors.textTertiary} />
+            <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+              Ingen generel progression endnu
+            </Text>
+            <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]}>
+              Lav hver session mindst 2 gange for at se generel tendens
+            </Text>
+          </View>
+        );
+      }
+
+      // Combine all valid session progressions into a unified timeline
+      const allSessionProgressions: any[] = [];
+      validSessions.forEach(sessionId => {
+        const session = sessionsData[sessionId];
+        session.progression.forEach((item: any, index: number) => {
+          if (index > 0) { // Skip first workout as we need a baseline for percentage
+            const previousItem = session.progression[index - 1];
+            const percentageImprovement = previousItem.maxWeight > 0 
+              ? ((item.maxWeight - previousItem.maxWeight) / previousItem.maxWeight) * 100 
+              : 0;
+            
+            allSessionProgressions.push({
+              date: item.date,
+              sessionName: session.name,
+              sessionId: sessionId,
+              maxWeight: item.maxWeight,
+              percentageImprovement: percentageImprovement,
+              cumulativeProgress: 0 // Will calculate below
+            });
+          }
+        });
+      });
+
+      // Sort by date
+      allSessionProgressions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      if (allSessionProgressions.length === 0) {
+        return (
+          <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
+            <Ionicons name="trending-up-outline" size={48} color={theme.colors.textTertiary} />
+            <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
+              For få data til generel progression
+            </Text>
+            <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]}>
+              Fortsæt med at træne for at se den generelle tendens
+            </Text>
+          </View>
+        );
+      }
+
+      // Calculate cumulative progression (running average of improvements)
+      let cumulativeSum = 0;
+      allSessionProgressions.forEach((item, index) => {
+        cumulativeSum += item.percentageImprovement;
+        item.cumulativeProgress = cumulativeSum / (index + 1); // Running average
+      });
+
+      // Prepare chart data for general progression trend
+      const generalProgressionData = {
+        labels: allSessionProgressions.slice(-10).map((item: any) => 
+          new Date(item.date).toLocaleDateString('da-DK', { month: 'short', day: 'numeric' })
+        ),
+        datasets: [
+          {
+            data: allSessionProgressions.slice(-10).map((item: any) => 
+              Math.round(item.cumulativeProgress * 10) / 10
+            ),
+            color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
+            strokeWidth: 3
+          }
+        ]
+      };
+
+      // Calculate session-specific stats
+      const sessionStats = validSessions.map(sessionId => {
+        const session = sessionsData[sessionId];
+        const sessionProgressions = allSessionProgressions.filter(p => p.sessionId === sessionId);
+        const avgImprovement = sessionProgressions.length > 0 
+          ? sessionProgressions.reduce((sum, p) => sum + p.percentageImprovement, 0) / sessionProgressions.length 
+          : 0;
+        
+        return {
+          name: session.name,
+          avgImprovement: Math.round(avgImprovement * 10) / 10,
+          workouts: session.progression.length
+        };
+      });
+
       return (
-        <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
-          <Ionicons name="trending-up-outline" size={48} color={theme.colors.textTertiary} />
-          <Text style={[styles.emptyStateText, { color: theme.colors.text }]}>
-            Ingen progression data endnu
-          </Text>
-          <Text style={[styles.emptyStateSubtext, { color: theme.colors.textSecondary }]}>
-            Start med at lave træninger for at se dit fremskridt
-          </Text>
+        <View style={styles.progressionContent}>
+          {/* General Progression Trend Chart */}
+          <View style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <Text style={[styles.chartTitle, { color: theme.colors.text }]}>Generel Progression Tendens</Text>
+            <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>
+              Gennemsnitlig forbedring på tværs af alle sessioner ({validSessions.length} aktive sessioner)
+            </Text>
+            <LineChart
+              data={generalProgressionData}
+              width={screenWidth - 80}
+              height={220}
+              yAxisSuffix="%"
+              chartConfig={{
+                backgroundColor: theme.colors.card,
+                backgroundGradientFrom: theme.colors.card,
+                backgroundGradientTo: theme.colors.card,
+                decimalPlaces: 1,
+                color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
+                labelColor: (opacity = 1) => theme.colors.text,
+                style: {
+                  borderRadius: 16
+                },
+                propsForDots: {
+                  r: "6",
+                  strokeWidth: "2",
+                  stroke: "#FF6B35"
+                }
+              }}
+              bezier
+              style={styles.chart}
+            />
+          </View>
+
+          {/* Session Breakdown */}
+          <View style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+            <Text style={[styles.chartTitle, { color: theme.colors.text }]}>Session Progression Oversigt</Text>
+            <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>
+              Gennemsnitlig forbedring per session type
+            </Text>
+            
+            {sessionStats.map((stat, index) => (
+              <View key={index} style={styles.sessionProgressRow}>
+                <View style={styles.sessionProgressInfo}>
+                  <Text style={[styles.sessionProgressName, { color: theme.colors.text }]}>{stat.name}</Text>
+                  <Text style={[styles.sessionProgressWorkouts, { color: theme.colors.textSecondary }]}>
+                    {stat.workouts} træninger
+                  </Text>
+                </View>
+                <View style={styles.sessionProgressValue}>
+                  <Text style={[
+                    styles.sessionProgressPercent, 
+                    { color: stat.avgImprovement >= 0 ? theme.colors.primary : theme.colors.error }
+                  ]}>
+                    {stat.avgImprovement >= 0 ? '+' : ''}{stat.avgImprovement}%
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          {/* Stats Cards */}
+          <View style={styles.statsGrid}>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Aktive Sessioner</Text>
+              <Text style={[styles.statValue, { color: theme.colors.primary }]}>{validSessions.length}</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Gennemsnitlig Tendens</Text>
+              <Text style={[styles.statValue, { 
+                color: allSessionProgressions[allSessionProgressions.length - 1]?.cumulativeProgress >= 0 
+                  ? theme.colors.primary 
+                  : theme.colors.error 
+              }]}>
+                {allSessionProgressions[allSessionProgressions.length - 1]?.cumulativeProgress >= 0 ? '+' : ''}
+                {Math.round((allSessionProgressions[allSessionProgressions.length - 1]?.cumulativeProgress || 0) * 10) / 10}%
+              </Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Total Træninger</Text>
+              <Text style={[styles.statValue, { color: theme.colors.accent }]}>{allSessionProgressions.length}</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.statLabel, { color: theme.colors.textSecondary }]}>Bedste Session</Text>
+              <Text style={[styles.statValue, { color: theme.colors.secondary }]}>
+                {sessionStats.length > 0 
+                  ? sessionStats.reduce((best, current) => 
+                      current.avgImprovement > best.avgImprovement ? current : best
+                    ).name.split(' ')[0] // First word only
+                  : 'N/A'
+                }
+              </Text>
+            </View>
+          </View>
         </View>
       );
-    }
-
-    // Calculate percentage improvements for max weight
-    const maxWeightPercentages = calculatePercentageImprovement(generalData.slice(-10), 'maxWeight');
-    const maxWeightData = {
-      labels: generalData.slice(-10).map((item: any) => new Date(item.date).toLocaleDateString('da-DK', { month: 'short', day: 'numeric' })),
-      datasets: [
-        {
-          data: maxWeightPercentages,
-          color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
-          strokeWidth: 3
-        }
-      ]
-    };
-
-    // Calculate percentage improvements for average weight
-    const avgWeightPercentages = calculatePercentageImprovement(generalData.slice(-10), 'avgWeight');
-    const avgWeightData = {
-      labels: generalData.slice(-10).map((item: any) => new Date(item.date).toLocaleDateString('da-DK', { month: 'short', day: 'numeric' })),
-      datasets: [
-        {
-          data: avgWeightPercentages,
-          color: (opacity = 1) => `rgba(78, 205, 196, ${opacity})`,
-          strokeWidth: 3
-        }
-      ]
-    };
-
-    return (
-      <View style={styles.progressionContent}>
-        {/* Max Weight Progression Chart */}
-        <View style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-          <Text style={[styles.chartTitle, { color: theme.colors.text }]}>Maksimal Vægt Forbedring</Text>
-          <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>Procent forbedring i højeste vægt løftet</Text>
-          <LineChart
-            data={maxWeightData}
-            width={screenWidth - 80}
-            height={220}
-            yAxisSuffix="%"
-            chartConfig={{
-              backgroundColor: theme.colors.card,
-              backgroundGradientFrom: theme.colors.card,
-              backgroundGradientTo: theme.colors.card,
-              decimalPlaces: 1,
-              color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
-              labelColor: (opacity = 1) => theme.colors.text,
-              style: {
-                borderRadius: 16
-              },
-              propsForDots: {
-                r: "6",
-                strokeWidth: "2",
-                stroke: "#FF6B35"
-              }
-            }}
-            bezier
-            style={styles.chart}
-          />
-        </View>
-
-        {/* Average Weight Progression Chart */}
-        <View style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-          <Text style={[styles.chartTitle, { color: theme.colors.text }]}>Gennemsnitlig Vægt Forbedring</Text>
-          <Text style={[styles.chartSubtitle, { color: theme.colors.textSecondary }]}>Procent forbedring i gennemsnitlig træningsvægt</Text>
-          <LineChart
-            data={avgWeightData}
-            width={screenWidth - 80}
-            height={220}
-            yAxisSuffix="%"
-            chartConfig={{
-              backgroundColor: theme.colors.card,
-              backgroundGradientFrom: theme.colors.card,
-              backgroundGradientTo: theme.colors.card,
-              decimalPlaces: 1,
-              color: (opacity = 1) => `rgba(78, 205, 196, ${opacity})`,
-              labelColor: (opacity = 1) => theme.colors.text,
-              style: {
-                borderRadius: 16
-              },
-              propsForDots: {
-                r: "6",
-                strokeWidth: "2",
-                stroke: "#4ECDC4"
-              }
-            }}
-            bezier
-            style={styles.chart}
-          />
-        </View>
-
-        {/* Stats Grid */}
-        <View style={styles.progressionStatsGrid}>
-          <View style={[styles.progressionStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-            <Ionicons name="fitness" size={24} color={theme.colors.primary} />
-            <Text style={[styles.progressionStatValue, { color: theme.colors.text }]}>
-              {generalData[generalData.length - 1]?.setCount || 0}
-            </Text>
-            <Text style={[styles.progressionStatLabel, { color: theme.colors.textSecondary }]}>
-              Sets i Dag
-            </Text>
-          </View>
-          
-          <View style={[styles.progressionStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-            <Ionicons name="barbell" size={24} color={theme.colors.secondary} />
-            <Text style={[styles.progressionStatValue, { color: theme.colors.text }]}>
-              {generalData[generalData.length - 1]?.maxWeight || 0}kg
-            </Text>
-            <Text style={[styles.progressionStatLabel, { color: theme.colors.textSecondary }]}>
-              Seneste Max
-            </Text>
-          </View>
-          
-          <View style={[styles.progressionStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-            <Ionicons name="repeat" size={24} color={theme.colors.accent} />
-            <Text style={[styles.progressionStatValue, { color: theme.colors.text }]}>
-              {generalData.length}
-            </Text>
-            <Text style={[styles.progressionStatLabel, { color: theme.colors.textSecondary }]}>
-              Træningsdage
-            </Text>
-          </View>
-          
-          <View style={[styles.progressionStatCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-            <Ionicons name="list" size={24} color={theme.colors.primary} />
-            <Text style={[styles.progressionStatValue, { color: theme.colors.text }]}>
-              {generalData[generalData.length - 1]?.exerciseCount || 0}
-            </Text>
-            <Text style={[styles.progressionStatLabel, { color: theme.colors.textSecondary }]}>
-              Øvelser
-            </Text>
-          </View>
-        </View>
-      </View>
-    );
     } catch (error) {
       console.error('Error rendering general progression:', error);
       return (
@@ -3338,5 +3388,32 @@ const styles = StyleSheet.create({
   selectorButtonText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  sessionProgressRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  sessionProgressInfo: {
+    flex: 1,
+  },
+  sessionProgressName: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  sessionProgressWorkouts: {
+    fontSize: 12,
+  },
+  sessionProgressValue: {
+    alignItems: 'flex-end',
+  },
+  sessionProgressPercent: {
+    fontSize: 18,
+    fontWeight: '700',
   },
 });
