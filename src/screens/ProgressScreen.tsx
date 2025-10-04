@@ -50,6 +50,7 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<string | null>(null);
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+  const [selectedMuscleGroupForExercise, setSelectedMuscleGroupForExercise] = useState<string | null>(null);
   const [progressionData, setProgressionData] = useState<any>({});
   const screenWidth = Dimensions.get('window').width;
 
@@ -1871,9 +1872,37 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
   const renderExerciseProgression = () => {
     try {
       const exercisesData = progressionData.exercises || {};
-      const exerciseKeys = Object.keys(exercisesData);
       
-      if (exerciseKeys.length === 0) {
+      // Group exercises by muscle group
+      const exercisesByMuscleGroup: Record<string, Array<{name: string, data: any}>> = {};
+      Object.keys(exercisesData).forEach(exerciseName => {
+        const exercise = exercisesData[exerciseName];
+        const muscleGroupId = exercise.muscleGroupId;
+        if (!exercisesByMuscleGroup[muscleGroupId]) {
+          exercisesByMuscleGroup[muscleGroupId] = [];
+        }
+        exercisesByMuscleGroup[muscleGroupId].push({
+          name: exerciseName,
+          data: exercise
+        });
+      });
+      
+      // Sort exercises within each muscle group
+      Object.keys(exercisesByMuscleGroup).forEach(muscleGroupId => {
+        exercisesByMuscleGroup[muscleGroupId].sort((a, b) => {
+          const an = a.data.name.toLowerCase();
+          const bn = b.data.name.toLowerCase();
+          return an.localeCompare(bn, 'da');
+        });
+      });
+      
+      const muscleGroupKeys = Object.keys(exercisesByMuscleGroup).sort((a, b) => {
+        const aName = muscleGroups.find(mg => mg.id === a)?.name || a;
+        const bName = muscleGroups.find(mg => mg.id === b)?.name || b;
+        return aName.localeCompare(bName, 'da');
+      });
+      
+      if (muscleGroupKeys.length === 0) {
         return (
           <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
             <Ionicons name="fitness-outline" size={48} color={theme.colors.textTertiary} />
@@ -1883,6 +1912,15 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
           </View>
         );
       }
+
+      // Set default selected muscle group if none selected
+      const currentSelectedMuscleGroup = selectedMuscleGroupForExercise || muscleGroupKeys[0];
+      if (!selectedMuscleGroupForExercise && muscleGroupKeys.length > 0) {
+        setSelectedMuscleGroupForExercise(muscleGroupKeys[0]);
+      }
+      
+      const exercisesInSelectedMuscleGroup = exercisesByMuscleGroup[currentSelectedMuscleGroup] || [];
+      const exerciseKeys = exercisesInSelectedMuscleGroup.map(e => e.name);
 
       // Set default selected exercise if none selected
       const currentSelectedExercise = selectedExercise || exerciseKeys[0];
@@ -1895,33 +1933,68 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
       if (!selectedExerciseData || !selectedExerciseData.progression || selectedExerciseData.progression.length < 2) {
         return (
           <View style={styles.progressionContent}>
-            {/* Exercise Selector */}
+            {/* Muscle Group Selector */}
             <View style={[styles.selectorContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-              <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Vælg Øvelse:</Text>
+              <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Vælg Muskelgruppe:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScroll}>
-                {exerciseKeys.slice(0, 15).map(exerciseName => {
-                  const exercise = exercisesData[exerciseName];
+                {muscleGroupKeys.map(muscleGroupId => {
+                  const muscleGroup = muscleGroups.find(mg => mg.id === muscleGroupId);
+                  const muscleGroupName = muscleGroup?.name || muscleGroupId;
                   return (
                     <TouchableOpacity
-                      key={exerciseName}
+                      key={muscleGroupId}
                       style={[
                         styles.selectorButton,
-                        { backgroundColor: currentSelectedExercise === exerciseName ? theme.colors.primary : theme.colors.card },
+                        { backgroundColor: currentSelectedMuscleGroup === muscleGroupId ? theme.colors.primary : theme.colors.card },
                         { borderColor: theme.colors.border }
                       ]}
-                      onPress={() => setSelectedExercise(exerciseName)}
+                      onPress={() => {
+                        setSelectedMuscleGroupForExercise(muscleGroupId);
+                        // Reset selected exercise when muscle group changes
+                        setSelectedExercise(null);
+                      }}
                     >
                       <Text style={[
                         styles.selectorButtonText,
-                        { color: currentSelectedExercise === exerciseName ? '#fff' : theme.colors.text }
+                        { color: currentSelectedMuscleGroup === muscleGroupId ? '#fff' : theme.colors.text }
                       ]}>
-                        {exercise.name}
+                        {muscleGroupName}
                       </Text>
                     </TouchableOpacity>
                   );
                 })}
               </ScrollView>
             </View>
+
+            {/* Exercise Selector */}
+            {exercisesInSelectedMuscleGroup.length > 0 && (
+              <View style={[styles.selectorContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+                <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Vælg Øvelse:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScroll}>
+                  {exercisesInSelectedMuscleGroup.map(exercise => {
+                    const exerciseName = exercise.name;
+                    return (
+                      <TouchableOpacity
+                        key={exerciseName}
+                        style={[
+                          styles.selectorButton,
+                          { backgroundColor: currentSelectedExercise === exerciseName ? theme.colors.primary : theme.colors.card },
+                          { borderColor: theme.colors.border }
+                        ]}
+                        onPress={() => setSelectedExercise(exerciseName)}
+                      >
+                        <Text style={[
+                          styles.selectorButtonText,
+                          { color: currentSelectedExercise === exerciseName ? '#fff' : theme.colors.text }
+                        ]}>
+                          {exercise.data.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
 
             <View style={[styles.emptyState, { backgroundColor: theme.colors.card }]}>
               <Ionicons name="fitness-outline" size={48} color={theme.colors.textTertiary} />
@@ -1952,34 +2025,69 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
       };
 
       return (
-        <View style={styles.progressionContent}>
-          {/* Exercise Selector */}
-          <View style={[styles.selectorContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
-            <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Vælg Øvelse:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScroll}>
-              {exerciseKeys.slice(0, 15).map(exerciseName => {
-                const exercise = exercisesData[exerciseName];
-                return (
-                  <TouchableOpacity
-                    key={exerciseName}
-                    style={[
-                      styles.selectorButton,
-                      { backgroundColor: currentSelectedExercise === exerciseName ? theme.colors.primary : theme.colors.card },
-                      { borderColor: theme.colors.border }
-                    ]}
-                    onPress={() => setSelectedExercise(exerciseName)}
-                  >
-                    <Text style={[
-                      styles.selectorButtonText,
-                      { color: currentSelectedExercise === exerciseName ? '#fff' : theme.colors.text }
-                    ]}>
-                      {exercise.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
+          <View style={styles.progressionContent}>
+            {/* Muscle Group Selector */}
+            <View style={[styles.selectorContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+              <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Vælg Muskelgruppe:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScroll}>
+                {muscleGroupKeys.map(muscleGroupId => {
+                  const muscleGroup = muscleGroups.find(mg => mg.id === muscleGroupId);
+                  const muscleGroupName = muscleGroup?.name || muscleGroupId;
+                  return (
+                    <TouchableOpacity
+                      key={muscleGroupId}
+                      style={[
+                        styles.selectorButton,
+                        { backgroundColor: currentSelectedMuscleGroup === muscleGroupId ? theme.colors.primary : theme.colors.card },
+                        { borderColor: theme.colors.border }
+                      ]}
+                      onPress={() => {
+                        setSelectedMuscleGroupForExercise(muscleGroupId);
+                        // Reset selected exercise when muscle group changes
+                        setSelectedExercise(null);
+                      }}
+                    >
+                      <Text style={[
+                        styles.selectorButtonText,
+                        { color: currentSelectedMuscleGroup === muscleGroupId ? '#fff' : theme.colors.text }
+                      ]}>
+                        {muscleGroupName}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Exercise Selector */}
+            {exercisesInSelectedMuscleGroup.length > 0 && (
+              <View style={[styles.selectorContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
+                <Text style={[styles.selectorLabel, { color: theme.colors.text }]}>Vælg Øvelse:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScroll}>
+                  {exercisesInSelectedMuscleGroup.map(exercise => {
+                    const exerciseName = exercise.name;
+                    return (
+                      <TouchableOpacity
+                        key={exerciseName}
+                        style={[
+                          styles.selectorButton,
+                          { backgroundColor: currentSelectedExercise === exerciseName ? theme.colors.primary : theme.colors.card },
+                          { borderColor: theme.colors.border }
+                        ]}
+                        onPress={() => setSelectedExercise(exerciseName)}
+                      >
+                        <Text style={[
+                          styles.selectorButtonText,
+                          { color: currentSelectedExercise === exerciseName ? '#fff' : theme.colors.text }
+                        ]}>
+                          {exercise.data.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
 
           {/* Selected Exercise Progression Chart */}
           <View style={[styles.chartContainer, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>

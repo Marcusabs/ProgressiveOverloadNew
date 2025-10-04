@@ -1,4 +1,4 @@
-// 🎨 Professional Design System for Progressive Overload App
+// 🎨 Professional Design System for EvoLift App
 
 export const Colors = {
   // Primary Brand Colors

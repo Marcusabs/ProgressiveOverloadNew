@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Progressive Overload",
-    "slug": "progressive-overload-app",
+    "name": "EvoLift",
+    "slug": "evolift-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/logo.png",
@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FF6B35"
+      "backgroundColor": "#00D4FF"
     },
     "ios": {
       "supportsTablet": true
@@ -19,22 +19,22 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FF6B35"
+        "backgroundColor": "#00D4FF"
       },
       "edgeToEdgeEnabled": false,
-      "package": "prpdk.progressive.overload.dev"
+      "package": "prpdk.evolift.app"
     },
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
-      "name": "Progressive Overload",
-      "shortName": "Progressive Overload",
-      "description": "Fitness app for progressive overload training",
+      "name": "EvoLift",
+      "shortName": "EvoLift",
+      "description": "Advanced fitness tracking with progressive overload",
       "startUrl": "/",
       "display": "standalone",
       "orientation": "portrait",
-      "themeColor": "#FF6B35",
-      "backgroundColor": "#F8F9FA"
+      "themeColor": "#00D4FF",
+      "backgroundColor": "#000000"
     },
     "plugins": [
       "expo-dev-client",
