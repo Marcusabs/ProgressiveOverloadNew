@@ -22,7 +22,7 @@
         "backgroundColor": "#00D4FF"
       },
       "edgeToEdgeEnabled": false,
-      "package": "prpdk.evolift.app"
+      "package": "prpdk.progressive.overload.dev"
     },
     "web": {
       "favicon": "./assets/favicon.png",
