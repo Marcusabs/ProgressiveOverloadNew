@@ -124,6 +124,17 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       const allSessions = await db.getAllAsync(`SELECT * FROM training_sessions`);
       console.log('📊 All sessions in database:', allSessions);
       
+      // Check if any sessions have is_active = 0
+      const inactiveSessions = await db.getAllAsync(`SELECT * FROM training_sessions WHERE is_active = 0`);
+      console.log('📊 Inactive sessions found:', inactiveSessions);
+      
+      // Fix any inactive sessions by setting them to active
+      if (inactiveSessions.length > 0) {
+        console.log('🔧 Fixing inactive sessions...');
+        await db.runAsync(`UPDATE training_sessions SET is_active = 1 WHERE is_active = 0`);
+        console.log(`✅ Fixed ${inactiveSessions.length} inactive sessions`);
+      }
+      
       const result = await db.getAllAsync(`
         SELECT ts.*, mg.name as muscle_group_name, mg.color as muscle_group_color
         FROM training_sessions ts
@@ -143,7 +154,34 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       }));
       
       console.log('✅ Processed training sessions:', trainingSessions);
-      set({ trainingSessions });
+      
+      // If we have less than 3 sessions, try to restore missing ones
+      if (trainingSessions.length < 3) {
+        console.log('⚠️ Missing sessions detected, attempting to restore...');
+        await restoreMissingSessions(db);
+        
+        // Reload sessions after restoration
+        const restoredResult = await db.getAllAsync(`
+          SELECT ts.*, mg.name as muscle_group_name, mg.color as muscle_group_color
+          FROM training_sessions ts
+          LEFT JOIN muscle_groups mg ON ts.muscle_group_id = mg.id
+          ORDER BY ts.name
+        `);
+        
+        const restoredSessions: TrainingSession[] = restoredResult.map((row: any) => ({
+          id: row.id,
+          name: row.name,
+          muscle_group_id: row.muscle_group_id,
+          description: row.description,
+          is_active: row.is_active === 1,
+          created_at: row.created_at
+        }));
+        
+        console.log('✅ Restored training sessions:', restoredSessions);
+        set({ trainingSessions: restoredSessions });
+      } else {
+        set({ trainingSessions });
+      }
     } catch (error) {
       console.error('❌ Failed to load training sessions:', error);
     }
@@ -1025,3 +1063,62 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
     set({ filteredExercises: filtered });
   }
 }));
+
+// Helper function to restore missing training sessions
+const restoreMissingSessions = async (db: any) => {
+  try {
+    console.log('🔄 Restoring missing training sessions...');
+    
+    // Check what muscle groups exist
+    const muscleGroups = await db.getAllAsync(`SELECT * FROM muscle_groups ORDER BY name`);
+    console.log('📊 Available muscle groups:', muscleGroups);
+    
+    // Expected sessions based on common patterns
+    const expectedSessions = [
+      { name: 'Ben', muscle_group_name: 'Ben' },
+      { name: 'Biceps og ryg', muscle_group_name: 'Biceps' },
+      { name: 'Bryst, skulder og triceps', muscle_group_name: 'Bryst' }
+    ];
+    
+    for (const expectedSession of expectedSessions) {
+      // Check if session already exists
+      const existingSession = await db.getAllAsync(`
+        SELECT * FROM training_sessions WHERE name = ?
+      `, [expectedSession.name]);
+      
+      if (existingSession.length === 0) {
+        // Find matching muscle group
+        const muscleGroup = muscleGroups.find((mg: any) => 
+          mg.name.toLowerCase().includes(expectedSession.muscle_group_name.toLowerCase())
+        );
+        
+        if (muscleGroup) {
+          const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+          const created_at = new Date().toISOString();
+          
+          await db.runAsync(`
+            INSERT INTO training_sessions (id, name, muscle_group_id, description, is_active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `, [
+            sessionId,
+            expectedSession.name,
+            muscleGroup.id,
+            `Session med fokus på ${expectedSession.muscle_group_name}`,
+            1,
+            created_at
+          ]);
+          
+          console.log(`✅ Restored session: ${expectedSession.name}`);
+        } else {
+          console.log(`⚠️ Could not find muscle group for: ${expectedSession.name}`);
+        }
+      } else {
+        console.log(`✅ Session already exists: ${expectedSession.name}`);
+      }
+    }
+    
+    console.log('✅ Session restoration complete');
+  } catch (error) {
+    console.error('❌ Failed to restore sessions:', error);
+  }
+};
