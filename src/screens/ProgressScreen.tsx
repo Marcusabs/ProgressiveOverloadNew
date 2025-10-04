@@ -1400,18 +1400,18 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
               yAxisSuffix="%"
               chartConfig={{
                 backgroundColor: theme.colors.card,
-                backgroundGradientFrom: theme.colors.card,
+                backgroundGradientFrom: theme.colors.surface,
                 backgroundGradientTo: theme.colors.card,
                 decimalPlaces: 1,
-                color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
+                color: (opacity = 1) => `rgba(0, 212, 255, ${opacity})`,
                 labelColor: (opacity = 1) => theme.colors.text,
                 style: {
                   borderRadius: 16
                 },
                 propsForDots: {
-                  r: "6",
+                  r: "5",
                   strokeWidth: "2",
-                  stroke: "#FF6B35"
+                  stroke: theme.colors.primary
                 }
               }}
               bezier

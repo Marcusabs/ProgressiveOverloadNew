@@ -84,35 +84,35 @@ const lightTheme: Theme = {
 const darkTheme: Theme = {
   dark: true,
   colors: {
-    // Brand Colors - Keep Orange for consistency
-    primary: '#FF6B35',
-    primaryLight: '#FF8C42',
-    primaryDark: '#E55A2B',
+    // Brand Colors - Hevy/Strong inspired: cyan primary, keep orange as accent
+    primary: '#00D4FF',
+    primaryLight: '#33DEFF',
+    primaryDark: '#00AACC',
     secondary: '#FFD93D',
-    accent: '#FF6B6B',
+    accent: '#FF6B35',
     
-    // Background Colors
-    background: '#0A0A0A',
-    surface: '#1A1A1A',
-    card: '#2D2D2D',
+    // Background Colors (deeper dark, mobile-first)
+    background: '#000000',
+    surface: '#0D1117',
+    card: '#161B22',
     
-    // Text Colors
+    // Text Colors (high contrast)
     text: '#FFFFFF',
-    textSecondary: '#E0E0E0',
-    textTertiary: '#B0B0B0',
+    textSecondary: '#C9D1D9',
+    textTertiary: '#8B949E',
     
     // Status Colors
-    success: '#66BB6A',
+    success: '#30D158',
     warning: '#FFB74D',
     error: '#EF5350',
     info: '#64B5F6',
     
-    // Border & Divider
-    border: '#404040',
-    divider: '#2A2A2A',
+    // Border & Divider (subtle)
+    border: '#30363D',
+    divider: '#21262D',
     
     // Shadow Colors
-    shadow: 'rgba(0, 0, 0, 0.3)',
+    shadow: 'rgba(0, 0, 0, 0.6)',
     
     // Special Colors
     overlay: 'rgba(0, 0, 0, 0.7)',

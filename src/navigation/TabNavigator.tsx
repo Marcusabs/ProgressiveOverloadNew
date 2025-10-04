@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
 import { RootTabParamList } from '../types';
+import * as Haptics from 'expo-haptics';
+import { useTheme } from '../contexts/ThemeContext';
 
 // Import screens
 import HomeScreen from '../screens/HomeScreen';
@@ -13,6 +15,12 @@ import ProgressScreen from '../screens/ProgressScreen';
 const Tab = createBottomTabNavigator<RootTabParamList>();
 
 export default function TabNavigator() {
+  const { theme, isDark } = useTheme();
+
+  const tabBarBackground = theme.colors.surface;
+  const tabActive = theme.colors.primary;
+  const tabInactive = theme.colors.textTertiary;
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -33,18 +41,18 @@ export default function TabNavigator() {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#FF6B35',
-        tabBarInactiveTintColor: 'gray',
+        tabBarActiveTintColor: tabActive,
+        tabBarInactiveTintColor: tabInactive,
         tabBarStyle: {
-          backgroundColor: '#fff',
+          backgroundColor: tabBarBackground,
           borderTopWidth: 1,
-          borderTopColor: '#e0e0e0',
-          paddingBottom: Platform.OS === 'android' ? 20 : 5,
-          paddingTop: 5,
-          height: Platform.OS === 'android' ? 80 : 60,
+          borderTopColor: theme.colors.divider,
+          paddingBottom: Platform.OS === 'android' ? 18 : 8,
+          paddingTop: 6,
+          height: Platform.OS === 'android' ? 76 : 64,
         },
         headerStyle: {
-          backgroundColor: '#FF6B35',
+          backgroundColor: theme.colors.primary,
         },
         headerTintColor: '#fff',
         headerTitleStyle: {
@@ -56,21 +64,41 @@ export default function TabNavigator() {
         name="Home" 
         component={HomeScreen}
         options={{ title: 'Hjem' }}
+        listeners={{
+          tabPress: async () => {
+            try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+          }
+        }}
       />
       <Tab.Screen 
         name="Training" 
         component={TrainingScreen}
         options={{ title: 'Træning' }}
+        listeners={{
+          tabPress: async () => {
+            try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+          }
+        }}
       />
       <Tab.Screen 
         name="Progress" 
         component={ProgressScreen}
         options={{ title: 'Fremskridt' }}
+        listeners={{
+          tabPress: async () => {
+            try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+          }
+        }}
       />
       <Tab.Screen 
         name="Profile" 
         component={ProfileScreen}
         options={{ title: 'Profil' }}
+        listeners={{
+          tabPress: async () => {
+            try { await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+          }
+        }}
       />
     </Tab.Navigator>
   );
