@@ -128,7 +128,6 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         SELECT ts.*, mg.name as muscle_group_name, mg.color as muscle_group_color
         FROM training_sessions ts
         LEFT JOIN muscle_groups mg ON ts.muscle_group_id = mg.id
-        WHERE ts.is_active = 1
         ORDER BY ts.name
       `);
       
