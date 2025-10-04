@@ -56,7 +56,7 @@ const insertDefaultMuscleGroups = async (db: SQLite.SQLiteDatabase) => {
     console.log('🚀 Inserting default muscle groups...');
     
     const defaultMuscleGroups = [
-      { name: 'Bryst', color: '#FF6B6B', icon: 'fitness' },
+      { name: 'Bryst', color: '#00D4FF', icon: 'fitness' },
       { name: 'Skulder', color: '#45B7D1', icon: 'fitness' },
       { name: 'Triceps', color: '#FFEAA7', icon: 'fitness' },
       { name: 'Ben', color: '#98D8C8', icon: 'fitness' },

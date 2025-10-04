@@ -181,7 +181,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
   }, [restTimerInterval]);
 
   const getMuscleGroupColor = (muscleGroupId: string): string => {
-    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8'];
+    const colors = ['#00D4FF', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8'];
     const index = parseInt(muscleGroupId) % colors.length;
     return colors[index];
   };
@@ -1491,7 +1491,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                     style={[styles.actionButton, { backgroundColor: theme.colors.divider }]}
                     onPress={() => handleDeleteExercise(exercise)}
                   >
-                    <Ionicons name="trash-outline" size={16} color="#FF6B6B" />
+                    <Ionicons name="trash-outline" size={16} color="#FF453A" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2052,7 +2052,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
                             {suggestion.exerciseName}
                           </Text>
                           <View style={[styles.suggestionType, { 
-                            backgroundColor: suggestion.type === 'weight' ? '#FF6B35' : 
+                            backgroundColor: suggestion.type === 'weight' ? '#00D4FF' : 
                                            suggestion.type === 'reps' ? '#4ECDC4' : '#96CEB4'
                           }]}>
                             <Text style={styles.suggestionTypeText}>

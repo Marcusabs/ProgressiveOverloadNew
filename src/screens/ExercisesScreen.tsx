@@ -131,7 +131,7 @@ export default function ExercisesScreen() {
         style={styles.deleteButton}
         onPress={() => handleDeleteExercise(item)}
       >
-        <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+        <Ionicons name="trash-outline" size={20} color="#FF453A" />
       </TouchableOpacity>
     </View>
   );

@@ -79,7 +79,7 @@ export default function SessionBuilderScreen() {
   };
 
   const getMuscleGroupColor = (muscleGroupId: string): string => {
-    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8'];
+    const colors = ['#00D4FF', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8'];
     const index = parseInt(muscleGroupId) % colors.length;
     return colors[index];
   };
@@ -200,7 +200,7 @@ export default function SessionBuilderScreen() {
                   style={styles.actionButton}
                   onPress={() => handleDeleteSession(session.id)}
                 >
-                  <Ionicons name="trash" size={20} color="#FF6B6B" />
+                  <Ionicons name="trash" size={20} color="#FF453A" />
                 </TouchableOpacity>
               </View>
             </View>

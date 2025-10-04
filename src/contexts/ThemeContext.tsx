@@ -45,12 +45,12 @@ export interface Theme {
 const lightTheme: Theme = {
   dark: false,
   colors: {
-    // Brand Colors - Orange Fire/Sun Theme
-    primary: '#FF6B35',
-    primaryLight: '#FF8C42',
-    primaryDark: '#E55A2B',
+    // Brand Colors - Cyan EvoLift Theme
+    primary: '#00D4FF',
+    primaryLight: '#33DDFF',
+    primaryDark: '#0099CC',
     secondary: '#FFD93D',
-    accent: '#FF6B6B',
+    accent: '#FF453A',
     
     // Background Colors
     background: '#F8F9FA',
@@ -89,7 +89,7 @@ const darkTheme: Theme = {
     primaryLight: '#33DEFF',
     primaryDark: '#00AACC',
     secondary: '#FFD93D',
-    accent: '#FF6B35',
+    accent: '#FF453A',
     
     // Background Colors (deeper dark, mobile-first)
     background: '#000000',

@@ -132,7 +132,7 @@ export default function HomeScreen() {
 
   const getMuscleGroupColor = (muscleGroupId: string): string => {
     const group = muscleGroups.find(mg => mg.id === muscleGroupId);
-    return group?.color || '#FF6B6B';
+    return group?.color || '#00D4FF';
   };
 
   const getMuscleGroupName = (muscleGroupId: string): string => {

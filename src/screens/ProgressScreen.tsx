@@ -1629,7 +1629,7 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
                 propsForDots: {
                   r: "6",
                   strokeWidth: "2",
-                  stroke: "#FF6B35"
+                  stroke: "#00D4FF"
                 }
               }}
               bezier
@@ -2553,7 +2553,7 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.actionButton, styles.deleteButton, { backgroundColor: theme.colors.error || '#FF3B30' }]}
+                style={[styles.actionButton, styles.deleteButton, { backgroundColor: theme.colors.error || '#FF453A' }]}
                 onPress={handleDeleteWorkout}
               >
                 <Ionicons name="trash" size={20} color="#fff" />

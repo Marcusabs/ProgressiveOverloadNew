@@ -8,7 +8,7 @@ export const Colors = {
     200: '#FFCA99',
     300: '#FFAB66',
     400: '#FF8533',
-    500: '#FF6B35', // Main brand color
+    500: '#00D4FF', // Main brand color
     600: '#E55A2B',
     700: '#CC4A21',
     800: '#B23A17',
@@ -87,10 +87,10 @@ export const Colors = {
 
   // Gradient Colors
   gradients: {
-    primary: ['#FF6B35', '#FF8533'] as const,
+    primary: ['#00D4FF', '#0099CC'] as const,
     secondary: ['#0EA5E9', '#38BDF8'] as const,
     success: ['#22C55E', '#4ADE80'] as const,
-    sunset: ['#FF6B35', '#FFAB66', '#FFE4CC'] as const,
+    sunset: ['#00D4FF', '#33DDFF', '#CCF7FF'] as const,
     ocean: ['#0C4A6E', '#0284C7', '#38BDF8'] as const,
     forest: ['#14532D', '#16A34A', '#4ADE80'] as const,
     royal: ['#581C87', '#7C3AED', '#A78BFA'] as const,
