@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "EvoLift",
-    "slug": "evolift-app",
+    "name": "Progressive Overload",
+    "slug": "progressive-overload-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/logo.png",
@@ -27,8 +27,8 @@
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
-      "name": "EvoLift",
-      "shortName": "EvoLift",
+      "name": "Progressive Overload",
+      "shortName": "Progressive Overload",
       "description": "Advanced fitness tracking with progressive overload",
       "startUrl": "/",
       "display": "standalone",
