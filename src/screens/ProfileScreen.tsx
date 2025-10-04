@@ -354,7 +354,7 @@ export default function ProfileScreen() {
   const handleHelp = () => {
     Alert.alert(
       'Hjælp & Support',
-      'Velkommen til Progressive Overload!\n\n📱 Træning: Opret sessioner og følg dine øvelser\n📊 Fremskridt: Se dine resultater og analyser\n🏆 Præstationer: Optjen badges for dine mål\n\nHar du spørgsmål? Kontakt support@progressiveoverload.dk',
+      'Velkommen til EvoLift!\n\n📱 Træning: Opret sessioner og følg dine øvelser\n📊 Fremskridt: Se dine resultater og analyser\n🏆 Præstationer: Optjen badges for dine mål\n\nHar du spørgsmål? Kontakt support@evolift.dk',
       [
         { text: 'FAQ', onPress: () => console.log('Open FAQ') },
         { text: 'Kontakt Support', onPress: () => console.log('Contact support') },
@@ -699,7 +699,7 @@ export default function ProfileScreen() {
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>App Information</Text>
           <View style={[styles.infoCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}>
             <Text style={[styles.appInfo, { color: theme.colors.text }]}>
-              Progressive Overload v{Constants.expoConfig?.version || '1.0.0'}
+              EvoLift v{Constants.expoConfig?.version || '1.0.0'}
             </Text>
             <Text style={[styles.appInfo, { color: theme.colors.text }]}>Built with React Native & Expo</Text>
           </View>
