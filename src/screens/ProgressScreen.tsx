@@ -923,7 +923,7 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
                       backgroundGradientFrom: theme.colors.card,
                       backgroundGradientTo: theme.colors.card,
                       decimalPlaces: 1,
-                      color: (opacity = 1) => `rgba(255, 107, 53, ${opacity})`,
+                      color: (opacity = 1) => `rgba(0, 212, 255, ${opacity})`,
                       labelColor: (opacity = 1) => `rgba(${isDark ? '255, 255, 255' : '0, 0, 0'}, ${opacity})`,
                       style: {
                         borderRadius: 16
@@ -931,7 +931,7 @@ export default function ProgressScreen({ route }: { route?: ProgressScreenRouteP
                       propsForDots: {
                         r: "4",
                         strokeWidth: "2",
-                        stroke: "#FF6B35"
+                        stroke: "#00D4FF"
                       }
                     }}
                     bezier
