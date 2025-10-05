@@ -124,6 +124,29 @@ export default function ProfileScreen() {
 
     try {
       console.log('🔄 Starting import process...');
+      console.log('📊 Import data length:', importData.length);
+      console.log('📊 Import data preview:', importData.substring(0, 200) + '...');
+      
+      // Validate JSON format first
+      try {
+        const testData = JSON.parse(importData);
+        console.log('✅ JSON validation passed');
+        console.log('📊 Data structure preview:', {
+          version: testData.version,
+          hasMuscleGroups: !!testData.muscle_groups,
+          hasSessions: !!testData.training_sessions,
+          hasExercises: !!testData.exercises,
+          hasWorkouts: !!testData.workouts
+        });
+      } catch (jsonError) {
+        console.error('❌ JSON validation failed:', jsonError);
+        Alert.alert(
+          '❌ JSON Fejl', 
+          `JSON format er ikke gyldig: ${jsonError.message}\n\nTjek at du har kopieret hele JSON dataen korrekt.`
+        );
+        return;
+      }
+      
       const { importAllData } = useExerciseStore.getState();
       const success = await importAllData(importData);
       

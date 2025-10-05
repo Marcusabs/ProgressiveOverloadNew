@@ -1106,14 +1106,34 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       console.log('📥 Importing all data...');
       const db = getDatabase();
       
-      const data = JSON.parse(dataJson);
+      // Validate JSON first
+      let data;
+      try {
+        data = JSON.parse(dataJson);
+        console.log('✅ JSON parsed successfully');
+      } catch (parseError) {
+        console.error('❌ JSON parse error:', parseError);
+        throw new Error(`Invalid JSON format: ${parseError.message}`);
+      }
       
       if (!data.version || !data.muscle_groups) {
-        throw new Error('Invalid data format');
+        console.error('❌ Missing required fields:', { 
+          hasVersion: !!data.version, 
+          hasMuscleGroups: !!data.muscle_groups,
+          dataKeys: Object.keys(data)
+        });
+        throw new Error('Invalid data format - missing version or muscle_groups');
       }
       
       console.log(`📊 Importing data version: ${data.version}`);
       console.log(`📅 Export timestamp: ${data.export_timestamp}`);
+      console.log(`📊 Data structure:`, {
+        muscle_groups: data.muscle_groups?.length || 0,
+        training_sessions: data.training_sessions?.length || 0,
+        exercises: data.exercises?.length || 0,
+        workouts: data.workouts?.length || 0,
+        sets: data.sets?.length || 0
+      });
       
       // Start transaction
       await db.execAsync('BEGIN TRANSACTION');
@@ -1124,40 +1144,63 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         
         // Disable foreign key constraints temporarily
         await db.runAsync('PRAGMA foreign_keys = OFF');
+        console.log('✅ Foreign keys disabled');
         
         // Delete in correct order (child tables first)
+        console.log('🗑️ Deleting sets...');
         await db.runAsync('DELETE FROM sets');
+        console.log('🗑️ Deleting workout_exercises...');
         await db.runAsync('DELETE FROM workout_exercises');
+        console.log('🗑️ Deleting workouts...');
         await db.runAsync('DELETE FROM workouts');
+        console.log('🗑️ Deleting progress_data...');
         await db.runAsync('DELETE FROM progress_data');
+        console.log('🗑️ Deleting exercises...');
         await db.runAsync('DELETE FROM exercises');
+        console.log('🗑️ Deleting training_sessions...');
         await db.runAsync('DELETE FROM training_sessions');
+        console.log('🗑️ Deleting muscle_groups...');
         await db.runAsync('DELETE FROM muscle_groups');
         
         // Re-enable foreign key constraints
         await db.runAsync('PRAGMA foreign_keys = ON');
+        console.log('✅ Foreign keys re-enabled');
         
         console.log('✅ Existing data cleared');
         
         // Import muscle groups
         if (data.muscle_groups && data.muscle_groups.length > 0) {
           console.log(`📊 Importing ${data.muscle_groups.length} muscle groups...`);
-          for (const mg of data.muscle_groups) {
-            await db.runAsync(`
-              INSERT INTO muscle_groups (id, name, color, icon, created_at)
-              VALUES (?, ?, ?, ?, ?)
-            `, [mg.id, mg.name, mg.color, mg.icon, mg.created_at]);
+          for (let i = 0; i < data.muscle_groups.length; i++) {
+            const mg = data.muscle_groups[i];
+            try {
+              await db.runAsync(`
+                INSERT INTO muscle_groups (id, name, color, icon, created_at)
+                VALUES (?, ?, ?, ?, ?)
+              `, [mg.id, mg.name, mg.color, mg.icon, mg.created_at]);
+              console.log(`✅ Imported muscle group ${i + 1}/${data.muscle_groups.length}: ${mg.name}`);
+            } catch (error) {
+              console.error(`❌ Failed to import muscle group ${i + 1}:`, mg, error);
+              throw error;
+            }
           }
         }
         
         // Import training sessions
         if (data.training_sessions && data.training_sessions.length > 0) {
           console.log(`📊 Importing ${data.training_sessions.length} training sessions...`);
-          for (const ts of data.training_sessions) {
-            await db.runAsync(`
-              INSERT INTO training_sessions (id, name, muscle_group_id, description, is_active, created_at)
-              VALUES (?, ?, ?, ?, ?, ?)
-            `, [ts.id, ts.name, ts.muscle_group_id, ts.description, ts.is_active, ts.created_at]);
+          for (let i = 0; i < data.training_sessions.length; i++) {
+            const ts = data.training_sessions[i];
+            try {
+              await db.runAsync(`
+                INSERT INTO training_sessions (id, name, muscle_group_id, description, is_active, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+              `, [ts.id, ts.name, ts.muscle_group_id, ts.description, ts.is_active, ts.created_at]);
+              console.log(`✅ Imported session ${i + 1}/${data.training_sessions.length}: ${ts.name}`);
+            } catch (error) {
+              console.error(`❌ Failed to import session ${i + 1}:`, ts, error);
+              throw error;
+            }
           }
         }
         
@@ -1229,12 +1272,23 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         return true;
         
       } catch (error) {
-        await db.execAsync('ROLLBACK');
+        console.error('❌ Transaction error, rolling back...', error);
+        try {
+          await db.execAsync('ROLLBACK');
+          console.log('✅ Transaction rolled back successfully');
+        } catch (rollbackError) {
+          console.error('❌ Failed to rollback transaction:', rollbackError);
+        }
         throw error;
       }
       
     } catch (error) {
       console.error('❌ Failed to import data:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
       return false;
     }
   }
