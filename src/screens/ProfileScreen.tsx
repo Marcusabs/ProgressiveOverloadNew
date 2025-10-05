@@ -116,6 +116,42 @@ export default function ProfileScreen() {
     }
   };
 
+  const handleClearAllData = async () => {
+    Alert.alert(
+      '🗑️ Slet Alt Data',
+      'Er du SIKKER på at du vil slette ALT data?\n\nDette kan IKKE fortrydes!\n\nAlle sessions, øvelser, træninger og progression vil blive slettet permanent.',
+      [
+        { text: 'Annuller', style: 'cancel' },
+        { 
+          text: 'SLET ALT', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('🗑️ User confirmed - clearing all data...');
+              const { clearAllData } = useExerciseStore.getState();
+              const success = await clearAllData();
+              
+              if (success) {
+                Alert.alert(
+                  '✅ Data Slettet!',
+                  'Alt data er blevet slettet.\n\nDu har nu en ren database og kan importere nyt data.',
+                  [{ text: 'OK' }]
+                );
+                // Reload data
+                loadRecentWorkouts();
+              } else {
+                Alert.alert('❌ Fejl', 'Kunne ikke slette alt data. Tjek console logs.');
+              }
+            } catch (error) {
+              console.error('❌ Clear data failed:', error);
+              Alert.alert('❌ Fejl', `Kunne ikke slette data: ${error.message}`);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleImportData = async () => {
     if (!importData.trim()) {
       Alert.alert('Fejl', 'Indtast venligst JSON data');
@@ -734,6 +770,13 @@ export default function ProfileScreen() {
             >
               <Ionicons name="cloud-upload-outline" size={24} color={theme.colors.primary} />
               <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Importer Data</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+              onPress={handleClearAllData}
+            >
+              <Ionicons name="trash-outline" size={24} color="#FF453A" />
+              <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Slet Alt Data</Text>
             </TouchableOpacity>
           </View>
         </View>

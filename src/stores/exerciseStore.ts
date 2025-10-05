@@ -44,6 +44,7 @@ export interface ExerciseState {
   filterByCategory: (category: string) => void;
   exportAllData: () => Promise<string>;
   importAllData: (dataJson: string) => Promise<boolean>;
+  clearAllData: () => Promise<boolean>;
 }
 
 export const useExerciseStore = create<ExerciseState>((set, get) => ({
@@ -122,13 +123,20 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       console.log('🔄 Loading training sessions...');
       const db = getDatabase();
       
-      // 🚀 AUTOMATIC DATA MIGRATION SYSTEM
+      // 🚀 AUTOMATIC DATA MIGRATION SYSTEM (only for fresh databases)
       console.log('🔍 Checking for data migration needs...');
-      await performDataMigration(db);
       
-      // 🚨 EMERGENCY DATA RESTORATION
-      console.log('🚨 Emergency data restoration check...');
-      await emergencyDataRestoration(db);
+      // Check if we have any sessions first
+      const existingSessions = await db.getAllAsync(`SELECT COUNT(*) as count FROM training_sessions`);
+      const sessionCount = (existingSessions[0] as any)?.count || 0;
+      
+      if (sessionCount === 0) {
+        console.log('🚨 No sessions found - running migration and restoration...');
+        await performDataMigration(db);
+        await emergencyDataRestoration(db);
+      } else {
+        console.log(`✅ Found ${sessionCount} existing sessions - skipping migration`);
+      }
       
       // First check all sessions in database
       const allSessions = await db.getAllAsync(`SELECT * FROM training_sessions`);
@@ -191,35 +199,9 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         return; // Exit early since we've already set the state
       }
       
-      // Only restore sessions if we have NO sessions at all (fresh database)
-      // Don't restore if user has manually deleted sessions
-      if (trainingSessions.length === 0) {
-        console.log('⚠️ No sessions found - this might be a fresh database, attempting to restore...');
-        await restoreMissingSessions(db);
-        
-        // Reload sessions after restoration
-        const restoredResult = await db.getAllAsync(`
-          SELECT ts.*, mg.name as muscle_group_name, mg.color as muscle_group_color
-          FROM training_sessions ts
-          LEFT JOIN muscle_groups mg ON ts.muscle_group_id = mg.id
-          ORDER BY ts.name
-        `);
-        
-        const restoredSessions: TrainingSession[] = restoredResult.map((row: any) => ({
-          id: row.id,
-          name: row.name,
-          muscle_group_id: row.muscle_group_id,
-          description: row.description,
-          is_active: row.is_active === 1,
-          created_at: row.created_at
-        }));
-        
-        console.log('✅ Restored training sessions:', restoredSessions);
-        set({ trainingSessions: restoredSessions });
-      } else {
-        console.log(`✅ Found ${trainingSessions.length} sessions - no restoration needed`);
-        set({ trainingSessions });
-      }
+      // Just set the sessions - no automatic restoration
+      console.log(`✅ Found ${trainingSessions.length} sessions - setting state`);
+      set({ trainingSessions });
     } catch (error) {
       console.error('❌ Failed to load training sessions:', error);
     }
@@ -507,6 +489,9 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       });
       
       console.log('✅ Complete state clearing completed');
+      
+      // Force trigger a re-render by updating a timestamp
+      set({ isLoading: false });
       
     } catch (error) {
       try { 
@@ -1176,6 +1161,11 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       console.log('📥 Importing all data...');
       const db = getDatabase();
       
+      // Check database schema first
+      console.log('🔍 Checking database schema...');
+      const tables = await db.getAllAsync("SELECT name FROM sqlite_master WHERE type='table'");
+      console.log('📊 Available tables:', tables.map((t: any) => t.name));
+      
       // Validate JSON first
       let data;
       try {
@@ -1303,55 +1293,90 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         // Import exercises
         if (data.exercises && data.exercises.length > 0) {
           console.log(`📊 Importing ${data.exercises.length} exercises...`);
-          for (const ex of data.exercises) {
-            await db.runAsync(`
-              INSERT INTO exercises (id, name, muscle_group_id, session_id, order_index, description, equipment, difficulty, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `, [ex.id, ex.name, ex.muscle_group_id, ex.session_id, ex.order_index, ex.description, ex.equipment, ex.difficulty, ex.created_at]);
+          for (let i = 0; i < data.exercises.length; i++) {
+            const ex = data.exercises[i];
+            try {
+              await db.runAsync(`
+                INSERT INTO exercises (id, name, muscle_group_id, session_id, order_index, description, equipment, difficulty, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `, [ex.id, ex.name, ex.muscle_group_id, ex.session_id, ex.order_index, ex.description, ex.equipment, ex.difficulty, ex.created_at]);
+              console.log(`✅ Imported exercise ${i + 1}/${data.exercises.length}: ${ex.name}`);
+            } catch (error) {
+              console.error(`❌ Failed to import exercise ${i + 1}:`, ex, error);
+              throw error;
+            }
           }
         }
         
         // Import workouts
         if (data.workouts && data.workouts.length > 0) {
           console.log(`📊 Importing ${data.workouts.length} workouts...`);
-          for (const wo of data.workouts) {
-            await db.runAsync(`
-              INSERT INTO workouts (id, session_id, name, date, duration, notes, completed, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            `, [wo.id, wo.session_id, wo.name, wo.date, wo.duration, wo.notes, wo.completed, wo.created_at]);
+          for (let i = 0; i < data.workouts.length; i++) {
+            const wo = data.workouts[i];
+            try {
+              await db.runAsync(`
+                INSERT INTO workouts (id, session_id, name, date, duration, notes, completed, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              `, [wo.id, wo.session_id, wo.name, wo.date, wo.duration, wo.notes, wo.completed, wo.created_at]);
+              console.log(`✅ Imported workout ${i + 1}/${data.workouts.length}: ${wo.name}`);
+            } catch (error) {
+              console.error(`❌ Failed to import workout ${i + 1}:`, wo, error);
+              throw error;
+            }
           }
         }
         
         // Import workout exercises
         if (data.workout_exercises && data.workout_exercises.length > 0) {
           console.log(`📊 Importing ${data.workout_exercises.length} workout exercises...`);
-          for (const we of data.workout_exercises) {
-            await db.runAsync(`
-              INSERT INTO workout_exercises (id, workout_id, exercise_id, order_index, completed)
-              VALUES (?, ?, ?, ?, ?)
-            `, [we.id, we.workout_id, we.exercise_id, we.order_index, we.completed]);
+          for (let i = 0; i < data.workout_exercises.length; i++) {
+            const we = data.workout_exercises[i];
+            try {
+              await db.runAsync(`
+                INSERT INTO workout_exercises (id, workout_id, exercise_id, order_index, completed)
+                VALUES (?, ?, ?, ?, ?)
+              `, [we.id, we.workout_id, we.exercise_id, we.order_index, we.completed]);
+              console.log(`✅ Imported workout exercise ${i + 1}/${data.workout_exercises.length}`);
+            } catch (error) {
+              console.error(`❌ Failed to import workout exercise ${i + 1}:`, we, error);
+              throw error;
+            }
           }
         }
         
         // Import sets
         if (data.sets && data.sets.length > 0) {
           console.log(`📊 Importing ${data.sets.length} sets...`);
-          for (const s of data.sets) {
-            await db.runAsync(`
-              INSERT INTO sets (id, workout_exercise_id, reps, weight, completed, order_index)
-              VALUES (?, ?, ?, ?, ?, ?)
-            `, [s.id, s.workout_exercise_id, s.reps, s.weight, s.completed, s.order_index]);
+          for (let i = 0; i < data.sets.length; i++) {
+            const s = data.sets[i];
+            try {
+              await db.runAsync(`
+                INSERT INTO sets (id, workout_exercise_id, reps, weight, completed, order_index)
+                VALUES (?, ?, ?, ?, ?, ?)
+              `, [s.id, s.workout_exercise_id, s.reps, s.weight, s.completed, s.order_index]);
+              console.log(`✅ Imported set ${i + 1}/${data.sets.length}`);
+            } catch (error) {
+              console.error(`❌ Failed to import set ${i + 1}:`, s, error);
+              throw error;
+            }
           }
         }
         
         // Import progress data
         if (data.progress_data && data.progress_data.length > 0) {
           console.log(`📊 Importing ${data.progress_data.length} progress records...`);
-          for (const pd of data.progress_data) {
-            await db.runAsync(`
-              INSERT INTO progress_data (id, exercise_id, workout_id, date, max_weight, total_volume, one_rep_max)
-              VALUES (?, ?, ?, ?, ?, ?, ?)
-            `, [pd.id, pd.exercise_id, pd.workout_id, pd.date, pd.max_weight, pd.total_volume, pd.one_rep_max]);
+          for (let i = 0; i < data.progress_data.length; i++) {
+            const pd = data.progress_data[i];
+            try {
+              await db.runAsync(`
+                INSERT INTO progress_data (id, exercise_id, workout_id, date, max_weight, total_volume, one_rep_max)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+              `, [pd.id, pd.exercise_id, pd.workout_id, pd.date, pd.max_weight, pd.total_volume, pd.one_rep_max]);
+              console.log(`✅ Imported progress data ${i + 1}/${data.progress_data.length}`);
+            } catch (error) {
+              console.error(`❌ Failed to import progress data ${i + 1}:`, pd, error);
+              throw error;
+            }
           }
         }
         
@@ -1380,6 +1405,21 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         await get().loadExercises();
         await get().loadWorkouts();
         
+        // Verify import success
+        const finalCounts = {
+          muscle_groups: (await db.getFirstAsync('SELECT COUNT(*) as count FROM muscle_groups') as any)?.count || 0,
+          training_sessions: (await db.getFirstAsync('SELECT COUNT(*) as count FROM training_sessions') as any)?.count || 0,
+          exercises: (await db.getFirstAsync('SELECT COUNT(*) as count FROM exercises') as any)?.count || 0,
+          workouts: (await db.getFirstAsync('SELECT COUNT(*) as count FROM workouts') as any)?.count || 0,
+          sets: (await db.getFirstAsync('SELECT COUNT(*) as count FROM sets') as any)?.count || 0
+        };
+        
+        console.log('📊 Final data counts after import:', finalCounts);
+        
+        if (finalCounts.training_sessions === 0) {
+          console.warn('⚠️ Warning: No training sessions imported!');
+        }
+        
         console.log('✅ Data imported and reloaded successfully');
         return true;
         
@@ -1401,6 +1441,102 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         stack: error.stack,
         name: error.name
       });
+      return false;
+    }
+  },
+
+  // 🗑️ CLEAR ALL DATA FUNCTION
+  clearAllData: async () => {
+    try {
+      console.log('🗑️ CLEARING ALL DATA - Starting complete database wipe...');
+      const db = getDatabase();
+      
+      // Start transaction
+      await db.execAsync('BEGIN TRANSACTION');
+      
+      try {
+        // Get counts before deletion for logging
+        const beforeCounts = {
+          sets: (await db.getFirstAsync('SELECT COUNT(*) as count FROM sets') as any)?.count || 0,
+          workout_exercises: (await db.getFirstAsync('SELECT COUNT(*) as count FROM workout_exercises') as any)?.count || 0,
+          workouts: (await db.getFirstAsync('SELECT COUNT(*) as count FROM workouts') as any)?.count || 0,
+          progress_data: (await db.getFirstAsync('SELECT COUNT(*) as count FROM progress_data') as any)?.count || 0,
+          exercises: (await db.getFirstAsync('SELECT COUNT(*) as count FROM exercises') as any)?.count || 0,
+          training_sessions: (await db.getFirstAsync('SELECT COUNT(*) as count FROM training_sessions') as any)?.count || 0,
+          muscle_groups: (await db.getFirstAsync('SELECT COUNT(*) as count FROM muscle_groups') as any)?.count || 0,
+        };
+        
+        console.log('📊 Data before clearing:', beforeCounts);
+        
+        // Disable foreign key constraints temporarily
+        await db.runAsync('PRAGMA foreign_keys = OFF');
+        console.log('✅ Foreign keys disabled');
+        
+        // AGGRESSIVE DELETION - Delete everything
+        console.log('🗑️ Deleting sets...');
+        await db.runAsync('DELETE FROM sets');
+        console.log('🗑️ Deleting workout_exercises...');
+        await db.runAsync('DELETE FROM workout_exercises');
+        console.log('🗑️ Deleting workouts...');
+        await db.runAsync('DELETE FROM workouts');
+        console.log('🗑️ Deleting progress_data...');
+        await db.runAsync('DELETE FROM progress_data');
+        console.log('🗑️ Deleting exercises...');
+        await db.runAsync('DELETE FROM exercises');
+        console.log('🗑️ Deleting training_sessions...');
+        await db.runAsync('DELETE FROM training_sessions');
+        console.log('🗑️ Deleting muscle_groups...');
+        await db.runAsync('DELETE FROM muscle_groups');
+        
+        // Re-enable foreign key constraints
+        await db.runAsync('PRAGMA foreign_keys = ON');
+        console.log('✅ Foreign keys re-enabled');
+        
+        // Verify deletion
+        const afterCounts = {
+          sets: (await db.getFirstAsync('SELECT COUNT(*) as count FROM sets') as any)?.count || 0,
+          workout_exercises: (await db.getFirstAsync('SELECT COUNT(*) as count FROM workout_exercises') as any)?.count || 0,
+          workouts: (await db.getFirstAsync('SELECT COUNT(*) as count FROM workouts') as any)?.count || 0,
+          progress_data: (await db.getFirstAsync('SELECT COUNT(*) as count FROM progress_data') as any)?.count || 0,
+          exercises: (await db.getFirstAsync('SELECT COUNT(*) as count FROM exercises') as any)?.count || 0,
+          training_sessions: (await db.getFirstAsync('SELECT COUNT(*) as count FROM training_sessions') as any)?.count || 0,
+          muscle_groups: (await db.getFirstAsync('SELECT COUNT(*) as count FROM muscle_groups') as any)?.count || 0,
+        };
+        
+        console.log('📊 Data after clearing:', afterCounts);
+        
+        // Commit transaction
+        await db.execAsync('COMMIT');
+        console.log('✅ Transaction committed');
+        
+        // Clear all state
+        set({
+          muscleGroups: [],
+          trainingSessions: [],
+          exercises: [],
+          workouts: [],
+          selectedSession: null,
+          currentWorkout: null,
+          filteredExercises: [],
+          isLoading: false
+        });
+        
+        console.log('✅ All data cleared successfully - database is now clean slate');
+        return true;
+        
+      } catch (error) {
+        console.error('❌ Error during data clearing, rolling back...', error);
+        try {
+          await db.execAsync('ROLLBACK');
+          console.log('✅ Transaction rolled back');
+        } catch (rollbackError) {
+          console.error('❌ Failed to rollback transaction:', rollbackError);
+        }
+        throw error;
+      }
+      
+    } catch (error) {
+      console.error('❌ Failed to clear all data:', error);
       return false;
     }
   }

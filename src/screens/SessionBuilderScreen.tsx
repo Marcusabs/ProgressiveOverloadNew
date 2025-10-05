@@ -145,7 +145,7 @@ export default function SessionBuilderScreen() {
             try {
               await deleteTrainingSession(sessionId);
               Alert.alert('Succes', 'Session slettet!');
-              loadTrainingSessions();
+              // Don't reload - deleteTrainingSession already updates state
             } catch (error) {
               Alert.alert('Fejl', 'Kunne ikke slette session');
             }

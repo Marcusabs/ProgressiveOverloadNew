@@ -1054,7 +1054,7 @@ export default function TrainingScreen({ route }: { route: TrainingScreenRoutePr
               await deleteTrainingSession(sessionId);
               
               Alert.alert('Succes', 'Session slettet!');
-              loadTrainingSessions();
+              // Don't reload - deleteTrainingSession already updates state
             } catch (error) {
               console.error('Error deleting session:', error);
               Alert.alert('Fejl', `Kunne ikke slette session: ${error instanceof Error ? error.message : 'Ukendt fejl'}`);
