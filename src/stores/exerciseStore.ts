@@ -1119,8 +1119,13 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       await db.execAsync('BEGIN TRANSACTION');
       
       try {
-        // 🗑️ CLEAR ALL EXISTING DATA FIRST
+        // 🗑️ CLEAR ALL EXISTING DATA FIRST (in correct order for foreign keys)
         console.log('🗑️ Clearing existing data before import...');
+        
+        // Disable foreign key constraints temporarily
+        await db.runAsync('PRAGMA foreign_keys = OFF');
+        
+        // Delete in correct order (child tables first)
         await db.runAsync('DELETE FROM sets');
         await db.runAsync('DELETE FROM workout_exercises');
         await db.runAsync('DELETE FROM workouts');
@@ -1128,6 +1133,10 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         await db.runAsync('DELETE FROM exercises');
         await db.runAsync('DELETE FROM training_sessions');
         await db.runAsync('DELETE FROM muscle_groups');
+        
+        // Re-enable foreign key constraints
+        await db.runAsync('PRAGMA foreign_keys = ON');
+        
         console.log('✅ Existing data cleared');
         
         // Import muscle groups

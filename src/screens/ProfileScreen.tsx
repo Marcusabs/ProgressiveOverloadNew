@@ -123,13 +123,14 @@ export default function ProfileScreen() {
     }
 
     try {
+      console.log('🔄 Starting import process...');
       const { importAllData } = useExerciseStore.getState();
       const success = await importAllData(importData);
       
       if (success) {
         Alert.alert(
-          'Succes!',
-          'Data er importeret succesfuldt!',
+          '✅ Succes!',
+          'Data er importeret succesfuldt!\n\nAlle sessions og træningsdata er gendannet.',
           [
             { 
               text: 'OK', 
@@ -143,11 +144,14 @@ export default function ProfileScreen() {
           ]
         );
       } else {
-        Alert.alert('Fejl', 'Kunne ikke importere data');
+        Alert.alert('❌ Fejl', 'Kunne ikke importere data. Tjek console logs for detaljer.');
       }
     } catch (error) {
-      console.error('Import failed:', error);
-      Alert.alert('Fejl', 'Ugyldig data format');
+      console.error('❌ Import failed:', error);
+      Alert.alert(
+        '❌ Import Fejl', 
+        `Der opstod en fejl under import: ${error.message || 'Ukendt fejl'}\n\nTjek console logs for mere information.`
+      );
     }
   };
 
