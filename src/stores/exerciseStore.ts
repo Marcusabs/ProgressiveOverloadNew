@@ -126,6 +126,10 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       console.log('🔍 Checking for data migration needs...');
       await performDataMigration(db);
       
+      // 🚨 EMERGENCY DATA RESTORATION
+      console.log('🚨 Emergency data restoration check...');
+      await emergencyDataRestoration(db);
+      
       // First check all sessions in database
       const allSessions = await db.getAllAsync(`SELECT * FROM training_sessions`);
       console.log('📊 All sessions in database:', allSessions);
@@ -1240,6 +1244,73 @@ const performDataMigration = async (db: any) => {
     console.log('✅ Data migration complete');
   } catch (error) {
     console.error('❌ Data migration failed:', error);
+  }
+};
+
+// 🚨 EMERGENCY DATA RESTORATION
+const emergencyDataRestoration = async (db: any) => {
+  try {
+    console.log('🚨 Starting emergency data restoration...');
+    
+    // Check if we have any data at all
+    const sessionCount = await db.getFirstAsync(`SELECT COUNT(*) as count FROM training_sessions`);
+    const exerciseCount = await db.getFirstAsync(`SELECT COUNT(*) as count FROM exercises`);
+    const workoutCount = await db.getFirstAsync(`SELECT COUNT(*) as count FROM workouts`);
+    
+    const totalSessions = (sessionCount as any)?.count || 0;
+    const totalExercises = (exerciseCount as any)?.count || 0;
+    const totalWorkouts = (workoutCount as any)?.count || 0;
+    
+    console.log(`📊 Current data status:`);
+    console.log(`   - Sessions: ${totalSessions}`);
+    console.log(`   - Exercises: ${totalExercises}`);
+    console.log(`   - Workouts: ${totalWorkouts}`);
+    
+    // If we have no data at all, this is a critical situation
+    if (totalSessions === 0 && totalExercises === 0 && totalWorkouts === 0) {
+      console.log('🚨 CRITICAL: No data found - this is a fresh database!');
+      console.log('🚨 Attempting emergency restoration...');
+      
+      // Create emergency backup marker
+      await db.runAsync(`
+        CREATE TABLE IF NOT EXISTS emergency_log (
+          id TEXT PRIMARY KEY,
+          timestamp TEXT,
+          status TEXT,
+          details TEXT
+        )
+      `);
+      
+      const emergencyId = `emergency_${Date.now()}`;
+      await db.runAsync(`
+        INSERT INTO emergency_log (id, timestamp, status, details)
+        VALUES (?, ?, ?, ?)
+      `, [
+        emergencyId,
+        new Date().toISOString(),
+        'data_loss_detected',
+        'No training data found - emergency restoration needed'
+      ]);
+      
+      console.log('🚨 Emergency log created - data loss detected!');
+      console.log('🚨 User needs to manually restore data from old app!');
+      
+      // Show user-friendly message
+      console.log('🚨 ==========================================');
+      console.log('🚨 CRITICAL DATA LOSS DETECTED!');
+      console.log('🚨 All training data has been lost.');
+      console.log('🚨 Please contact support or restore from backup.');
+      console.log('🚨 ==========================================');
+      
+    } else if (totalSessions === 0) {
+      console.log('⚠️ Sessions missing but other data exists - restoring sessions...');
+      await restoreMissingSessions(db);
+    } else {
+      console.log('✅ Data appears to be intact');
+    }
+    
+  } catch (error) {
+    console.error('❌ Emergency data restoration failed:', error);
   }
 };
 

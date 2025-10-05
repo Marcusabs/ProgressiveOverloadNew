@@ -36,6 +36,8 @@ export default function ProfileScreen() {
   const [recentWorkouts, setRecentWorkouts] = useState<Array<any>>([]);
   const [showWorkoutLogModal, setShowWorkoutLogModal] = useState(false);
   const [longPressedWorkout, setLongPressedWorkout] = useState<any>(null);
+  const [showDataImportModal, setShowDataImportModal] = useState(false);
+  const [importData, setImportData] = useState('');
   const [editForm, setEditForm] = useState({
     name: '',
     weight: '',
@@ -86,6 +88,64 @@ export default function ProfileScreen() {
       setRecentWorkouts(workouts);
     } catch (error) {
       console.error('Error loading recent workouts:', error);
+    }
+  };
+
+  // 🚀 DATA IMPORT/EXPORT FUNCTIONS
+  const handleExportData = async () => {
+    try {
+      const { exportAllData } = useExerciseStore.getState();
+      const dataJson = await exportAllData();
+      
+      // In a real app, you would save this to a file or share it
+      // For now, we'll show it in an alert for copying
+      Alert.alert(
+        'Data Exportet',
+        `Data er eksporteret. JSON data er ${dataJson.length} karakterer lang.`,
+        [
+          { text: 'OK' }
+        ]
+      );
+      
+      console.log('Exported data:', dataJson);
+    } catch (error) {
+      console.error('Export failed:', error);
+      Alert.alert('Fejl', 'Kunne ikke eksportere data');
+    }
+  };
+
+  const handleImportData = async () => {
+    if (!importData.trim()) {
+      Alert.alert('Fejl', 'Indtast venligst JSON data');
+      return;
+    }
+
+    try {
+      const { importAllData } = useExerciseStore.getState();
+      const success = await importAllData(importData);
+      
+      if (success) {
+        Alert.alert(
+          'Succes!',
+          'Data er importeret succesfuldt!',
+          [
+            { 
+              text: 'OK', 
+              onPress: () => {
+                setShowDataImportModal(false);
+                setImportData('');
+                // Reload data
+                loadRecentWorkouts();
+              }
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Fejl', 'Kunne ikke importere data');
+      }
+    } catch (error) {
+      console.error('Import failed:', error);
+      Alert.alert('Fejl', 'Ugyldig data format');
     }
   };
 
@@ -939,6 +999,62 @@ export default function ProfileScreen() {
             </View>
           </View>
         </Modal>
+
+        {/* Data Import Modal */}
+        <Modal
+          visible={showDataImportModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowDataImportModal(false)}
+        >
+          <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Importer Data</Text>
+                <TouchableOpacity onPress={() => setShowDataImportModal(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.primary} />
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.dataImportContent}>
+                <Text style={[styles.dataImportDescription, { color: theme.colors.textSecondary }]}>
+                  Indtast JSON data fra den gamle app for at gendanne alle træningsdata:
+                </Text>
+                
+                <TextInput
+                  style={[styles.dataImportInput, { 
+                    backgroundColor: theme.colors.card, 
+                    color: theme.colors.text,
+                    borderColor: theme.colors.border 
+                  }]}
+                  value={importData}
+                  onChangeText={setImportData}
+                  placeholder="Indtast JSON data her..."
+                  placeholderTextColor={theme.colors.textSecondary}
+                  multiline
+                  numberOfLines={10}
+                  textAlignVertical="top"
+                />
+                
+                <View style={styles.dataImportButtons}>
+                  <TouchableOpacity
+                    style={[styles.dataImportButton, styles.cancelButton]}
+                    onPress={() => setShowDataImportModal(false)}
+                  >
+                    <Text style={styles.cancelButtonText}>Annuller</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.dataImportButton, styles.saveButton]}
+                    onPress={handleImportData}
+                  >
+                    <Text style={styles.saveButtonText}>Importer</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </ScrollView>
     );
   }
@@ -1305,5 +1421,33 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Data Import Styles
+  dataImportContent: {
+    padding: 20,
+  },
+  dataImportDescription: {
+    fontSize: 16,
+    marginBottom: 20,
+    lineHeight: 24,
+  },
+  dataImportInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    minHeight: 200,
+    marginBottom: 20,
+  },
+  dataImportButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  dataImportButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 5,
   },
 });
