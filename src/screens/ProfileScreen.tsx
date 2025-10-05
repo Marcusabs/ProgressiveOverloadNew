@@ -699,6 +699,13 @@ export default function ProfileScreen() {
               <Ionicons name="download-outline" size={24} color={theme.colors.secondary} />
               <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Export Data</Text>
             </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.quickActionCard, { backgroundColor: theme.colors.card, shadowColor: theme.colors.shadow }]}
+              onPress={() => setShowDataImportModal(true)}
+            >
+              <Ionicons name="cloud-upload-outline" size={24} color={theme.colors.primary} />
+              <Text style={[styles.quickActionText, { color: theme.colors.text }]}>Importer Data</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
