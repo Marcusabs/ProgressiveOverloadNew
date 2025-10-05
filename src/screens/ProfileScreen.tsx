@@ -966,7 +966,7 @@ export default function ProfileScreen() {
           onRequestClose={() => setShowDataImportModal(false)}
         >
           <View style={[styles.modalOverlay, { backgroundColor: theme.colors.overlay }]}>
-            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+            <View style={[styles.modalContent, styles.dataImportModal, { backgroundColor: theme.colors.surface }]}>
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Importer Data</Text>
                 <TouchableOpacity onPress={() => setShowDataImportModal(false)}>
@@ -974,7 +974,8 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               </View>
               
-              <View style={styles.dataImportContent}>
+              <ScrollView style={styles.dataImportScrollView}>
+                <View style={styles.dataImportContent}>
                 <Text style={[styles.dataImportDescription, { color: theme.colors.textSecondary }]}>
                   Indtast JSON data fra den gamle app for at gendanne alle træningsdata:
                 </Text>
@@ -1027,7 +1028,8 @@ export default function ProfileScreen() {
                     <Text style={styles.saveButtonText}>Importer</Text>
                   </TouchableOpacity>
                 </View>
-              </View>
+                </View>
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -1434,6 +1436,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginLeft: 4,
+  },
+  dataImportModal: {
+    maxHeight: '90%',
+    margin: 20,
+  },
+  dataImportScrollView: {
+    maxHeight: '100%',
   },
   dataImportButtons: {
     flexDirection: 'row',
