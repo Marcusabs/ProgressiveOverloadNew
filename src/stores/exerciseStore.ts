@@ -165,9 +165,36 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       
       console.log('✅ Processed training sessions:', trainingSessions);
       
-      // If we have less than 3 sessions, try to restore missing ones
-      if (trainingSessions.length < 3) {
-        console.log('⚠️ Missing sessions detected, attempting to restore...');
+      // 🚨 CHECK FOR DUPLICATE SESSIONS AND REMOVE THEM
+      const duplicateCheck = await checkAndRemoveDuplicateSessions(db, trainingSessions);
+      if (duplicateCheck.removed > 0) {
+        console.log(`🧹 Removed ${duplicateCheck.removed} duplicate sessions`);
+        // Reload sessions after duplicate removal
+        const cleanedResult = await db.getAllAsync(`
+          SELECT ts.*, mg.name as muscle_group_name, mg.color as muscle_group_color
+          FROM training_sessions ts
+          LEFT JOIN muscle_groups mg ON ts.muscle_group_id = mg.id
+          ORDER BY ts.name
+        `);
+        
+        const cleanedSessions: TrainingSession[] = cleanedResult.map((row: any) => ({
+          id: row.id,
+          name: row.name,
+          muscle_group_id: row.muscle_group_id,
+          description: row.description,
+          is_active: row.is_active === 1,
+          created_at: row.created_at
+        }));
+        
+        console.log('✅ Cleaned training sessions:', cleanedSessions);
+        set({ trainingSessions: cleanedSessions });
+        return; // Exit early since we've already set the state
+      }
+      
+      // Only restore sessions if we have NO sessions at all (fresh database)
+      // Don't restore if user has manually deleted sessions
+      if (trainingSessions.length === 0) {
+        console.log('⚠️ No sessions found - this might be a fresh database, attempting to restore...');
         await restoreMissingSessions(db);
         
         // Reload sessions after restoration
@@ -190,6 +217,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         console.log('✅ Restored training sessions:', restoredSessions);
         set({ trainingSessions: restoredSessions });
       } else {
+        console.log(`✅ Found ${trainingSessions.length} sessions - no restoration needed`);
         set({ trainingSessions });
       }
     } catch (error) {
@@ -411,10 +439,14 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
 
   deleteTrainingSession: async (id) => {
     try {
+      console.log(`🗑️ Deleting training session: ${id}`);
       const db = getDatabase();
 
       // Perform dependent deletions to satisfy FK constraints
       await db.execAsync('BEGIN');
+      
+      // Delete in correct order to avoid foreign key issues
+      console.log('🗑️ Deleting dependent data...');
       await db.runAsync(
         `DELETE FROM sets WHERE workout_exercise_id IN (
            SELECT id FROM workout_exercises WHERE workout_id IN (
@@ -437,15 +469,36 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       );
       await db.runAsync(`DELETE FROM workouts WHERE session_id = ?`, [id]);
       await db.runAsync(`UPDATE exercises SET session_id = NULL WHERE session_id = ?`, [id]);
-      await db.runAsync('DELETE FROM training_sessions WHERE id = ?', [id]);
+      
+      // Finally delete the session itself
+      const deleteResult = await db.runAsync('DELETE FROM training_sessions WHERE id = ?', [id]);
+      console.log(`🗑️ Session deletion result:`, deleteResult);
+      
       await db.execAsync('COMMIT');
+      console.log('✅ Session deleted successfully from database');
 
-      set(state => ({
-        trainingSessions: state.trainingSessions.filter(session => session.id !== id)
-      }));
+      // Update state immediately without reloading
+      set(state => {
+        const updatedSessions = state.trainingSessions.filter(session => session.id !== id);
+        console.log(`✅ State updated: ${updatedSessions.length} sessions remaining`);
+        return { trainingSessions: updatedSessions };
+      });
+      
+      // Clear selected session if it was deleted
+      const currentSelected = get().selectedSession;
+      if (currentSelected && currentSelected.id === id) {
+        set({ selectedSession: null });
+        console.log('✅ Cleared selected session');
+      }
+      
     } catch (error) {
-      try { await getDatabase().execAsync('ROLLBACK'); } catch {}
-      console.error('Failed to delete training session:', error);
+      try { 
+        await getDatabase().execAsync('ROLLBACK'); 
+        console.log('✅ Transaction rolled back');
+      } catch (rollbackError) {
+        console.error('❌ Failed to rollback:', rollbackError);
+      }
+      console.error('❌ Failed to delete training session:', error);
       throw error;
     }
   },
@@ -1385,6 +1438,77 @@ const emergencyDataRestoration = async (db: any) => {
     
   } catch (error) {
     console.error('❌ Emergency data restoration failed:', error);
+  }
+};
+
+// 🧹 CHECK AND REMOVE DUPLICATE SESSIONS
+const checkAndRemoveDuplicateSessions = async (db: any, sessions: TrainingSession[]) => {
+  try {
+    console.log('🔍 Checking for duplicate sessions...');
+    
+    // Group sessions by name
+    const sessionGroups: { [name: string]: TrainingSession[] } = {};
+    sessions.forEach(session => {
+      if (!sessionGroups[session.name]) {
+        sessionGroups[session.name] = [];
+      }
+      sessionGroups[session.name].push(session);
+    });
+    
+    // Find duplicates
+    const duplicates: TrainingSession[] = [];
+    Object.entries(sessionGroups).forEach(([name, groupSessions]) => {
+      if (groupSessions.length > 1) {
+        console.log(`🚨 Found ${groupSessions.length} duplicate sessions for: ${name}`);
+        // Keep the oldest session (first created), remove the rest
+        groupSessions.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        duplicates.push(...groupSessions.slice(1)); // Remove all but the first (oldest)
+      }
+    });
+    
+    if (duplicates.length === 0) {
+      console.log('✅ No duplicate sessions found');
+      return { removed: 0 };
+    }
+    
+    console.log(`🧹 Removing ${duplicates.length} duplicate sessions...`);
+    
+    // Delete duplicates from database
+    for (const duplicate of duplicates) {
+      console.log(`🗑️ Deleting duplicate session: ${duplicate.name} (${duplicate.id})`);
+      
+      // Delete dependent data first
+      await db.runAsync(
+        `DELETE FROM sets WHERE workout_exercise_id IN (
+           SELECT id FROM workout_exercises WHERE workout_id IN (
+             SELECT id FROM workouts WHERE session_id = ?
+           )
+         )`,
+        [duplicate.id]
+      );
+      await db.runAsync(
+        `DELETE FROM workout_exercises WHERE workout_id IN (
+           SELECT id FROM workouts WHERE session_id = ?
+         )`,
+        [duplicate.id]
+      );
+      await db.runAsync(
+        `DELETE FROM progress_data WHERE workout_id IN (
+           SELECT id FROM workouts WHERE session_id = ?
+         )`,
+        [duplicate.id]
+      );
+      await db.runAsync(`DELETE FROM workouts WHERE session_id = ?`, [duplicate.id]);
+      await db.runAsync(`UPDATE exercises SET session_id = NULL WHERE session_id = ?`, [duplicate.id]);
+      await db.runAsync(`DELETE FROM training_sessions WHERE id = ?`, [duplicate.id]);
+    }
+    
+    console.log(`✅ Removed ${duplicates.length} duplicate sessions`);
+    return { removed: duplicates.length };
+    
+  } catch (error) {
+    console.error('❌ Failed to check/remove duplicates:', error);
+    return { removed: 0 };
   }
 };
 
