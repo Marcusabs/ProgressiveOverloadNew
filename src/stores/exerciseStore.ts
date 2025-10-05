@@ -477,19 +477,36 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       await db.execAsync('COMMIT');
       console.log('✅ Session deleted successfully from database');
 
-      // Update state immediately without reloading
+      // FORCE STATE CLEARING - Update all related state
       set(state => {
         const updatedSessions = state.trainingSessions.filter(session => session.id !== id);
         console.log(`✅ State updated: ${updatedSessions.length} sessions remaining`);
-        return { trainingSessions: updatedSessions };
+        
+        // Clear selected session if it was deleted
+        const clearedSelectedSession = state.selectedSession?.id === id ? null : state.selectedSession;
+        
+        // Clear current workout if it belongs to deleted session
+        const clearedCurrentWorkout = state.currentWorkout?.session_id === id ? null : state.currentWorkout;
+        
+        // Filter workouts to remove any belonging to deleted session
+        const updatedWorkouts = state.workouts.filter(workout => workout.session_id !== id);
+        
+        // Filter exercises to remove any belonging to deleted session
+        const updatedExercises = state.exercises.filter(exercise => exercise.session_id !== id);
+        
+        console.log(`✅ Cleared ${state.workouts.length - updatedWorkouts.length} workouts`);
+        console.log(`✅ Cleared ${state.exercises.length - updatedExercises.length} exercises`);
+        
+        return { 
+          trainingSessions: updatedSessions,
+          selectedSession: clearedSelectedSession,
+          currentWorkout: clearedCurrentWorkout,
+          workouts: updatedWorkouts,
+          exercises: updatedExercises
+        };
       });
       
-      // Clear selected session if it was deleted
-      const currentSelected = get().selectedSession;
-      if (currentSelected && currentSelected.id === id) {
-        set({ selectedSession: null });
-        console.log('✅ Cleared selected session');
-      }
+      console.log('✅ Complete state clearing completed');
       
     } catch (error) {
       try { 
@@ -1192,14 +1209,27 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       await db.execAsync('BEGIN TRANSACTION');
       
       try {
-        // 🗑️ CLEAR ALL EXISTING DATA FIRST (in correct order for foreign keys)
-        console.log('🗑️ Clearing existing data before import...');
+        // 🗑️ AGGRESSIVELY CLEAR ALL EXISTING DATA
+        console.log('🗑️ AGGRESSIVELY clearing ALL existing data before import...');
         
         // Disable foreign key constraints temporarily
         await db.runAsync('PRAGMA foreign_keys = OFF');
         console.log('✅ Foreign keys disabled');
         
-        // Delete in correct order (child tables first)
+        // Get counts before deletion for logging
+        const beforeCounts = {
+          sets: (await db.getFirstAsync('SELECT COUNT(*) as count FROM sets') as any)?.count || 0,
+          workout_exercises: (await db.getFirstAsync('SELECT COUNT(*) as count FROM workout_exercises') as any)?.count || 0,
+          workouts: (await db.getFirstAsync('SELECT COUNT(*) as count FROM workouts') as any)?.count || 0,
+          progress_data: (await db.getFirstAsync('SELECT COUNT(*) as count FROM progress_data') as any)?.count || 0,
+          exercises: (await db.getFirstAsync('SELECT COUNT(*) as count FROM exercises') as any)?.count || 0,
+          training_sessions: (await db.getFirstAsync('SELECT COUNT(*) as count FROM training_sessions') as any)?.count || 0,
+          muscle_groups: (await db.getFirstAsync('SELECT COUNT(*) as count FROM muscle_groups') as any)?.count || 0,
+        };
+        
+        console.log('📊 Data before deletion:', beforeCounts);
+        
+        // AGGRESSIVE DELETION - Delete everything regardless of foreign keys
         console.log('🗑️ Deleting sets...');
         await db.runAsync('DELETE FROM sets');
         console.log('🗑️ Deleting workout_exercises...');
@@ -1215,11 +1245,24 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         console.log('🗑️ Deleting muscle_groups...');
         await db.runAsync('DELETE FROM muscle_groups');
         
+        // Verify deletion
+        const afterCounts = {
+          sets: (await db.getFirstAsync('SELECT COUNT(*) as count FROM sets') as any)?.count || 0,
+          workout_exercises: (await db.getFirstAsync('SELECT COUNT(*) as count FROM workout_exercises') as any)?.count || 0,
+          workouts: (await db.getFirstAsync('SELECT COUNT(*) as count FROM workouts') as any)?.count || 0,
+          progress_data: (await db.getFirstAsync('SELECT COUNT(*) as count FROM progress_data') as any)?.count || 0,
+          exercises: (await db.getFirstAsync('SELECT COUNT(*) as count FROM exercises') as any)?.count || 0,
+          training_sessions: (await db.getFirstAsync('SELECT COUNT(*) as count FROM training_sessions') as any)?.count || 0,
+          muscle_groups: (await db.getFirstAsync('SELECT COUNT(*) as count FROM muscle_groups') as any)?.count || 0,
+        };
+        
+        console.log('📊 Data after deletion:', afterCounts);
+        
         // Re-enable foreign key constraints
         await db.runAsync('PRAGMA foreign_keys = ON');
         console.log('✅ Foreign keys re-enabled');
         
-        console.log('✅ Existing data cleared');
+        console.log('✅ ALL existing data cleared successfully');
         
         // Import muscle groups
         if (data.muscle_groups && data.muscle_groups.length > 0) {
@@ -1315,13 +1358,29 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
         // Commit transaction
         await db.execAsync('COMMIT');
         
-        // Reload all data
+        // FORCE RELOAD ALL DATA - Clear state first, then reload
+        console.log('🔄 Force reloading all data after import...');
+        
+        // Clear all state first
+        set({
+          muscleGroups: [],
+          trainingSessions: [],
+          exercises: [],
+          workouts: [],
+          selectedSession: null,
+          currentWorkout: null,
+          filteredExercises: []
+        });
+        
+        console.log('✅ State cleared before reload');
+        
+        // Reload all data fresh
         await get().loadMuscleGroups();
         await get().loadTrainingSessions();
         await get().loadExercises();
         await get().loadWorkouts();
         
-        console.log('✅ Data imported successfully');
+        console.log('✅ Data imported and reloaded successfully');
         return true;
         
       } catch (error) {
