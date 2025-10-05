@@ -974,8 +974,7 @@ export default function ProfileScreen() {
                 </TouchableOpacity>
               </View>
               
-              <ScrollView style={styles.dataImportScrollView}>
-                <View style={styles.dataImportContent}>
+              <View style={styles.dataImportContent}>
                 <Text style={[styles.dataImportDescription, { color: theme.colors.textSecondary }]}>
                   Indtast JSON data fra den gamle app for at gendanne alle træningsdata:
                 </Text>
@@ -992,7 +991,7 @@ export default function ProfileScreen() {
                     placeholder="Indtast JSON data her..."
                     placeholderTextColor={theme.colors.textSecondary}
                     multiline
-                    numberOfLines={10}
+                    numberOfLines={8}
                     textAlignVertical="top"
                   />
                   
@@ -1012,24 +1011,24 @@ export default function ProfileScreen() {
                     <Text style={styles.pasteButtonText}>Indsæt</Text>
                   </TouchableOpacity>
                 </View>
+              </View>
+              
+              {/* Knapper udenfor ScrollView - altid synlige */}
+              <View style={styles.dataImportButtons}>
+                <TouchableOpacity
+                  style={[styles.dataImportButton, styles.cancelButton]}
+                  onPress={() => setShowDataImportModal(false)}
+                >
+                  <Text style={styles.cancelButtonText}>Annuller</Text>
+                </TouchableOpacity>
                 
-                <View style={styles.dataImportButtons}>
-                  <TouchableOpacity
-                    style={[styles.dataImportButton, styles.cancelButton]}
-                    onPress={() => setShowDataImportModal(false)}
-                  >
-                    <Text style={styles.cancelButtonText}>Annuller</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={[styles.dataImportButton, styles.saveButton]}
-                    onPress={handleImportData}
-                  >
-                    <Text style={styles.saveButtonText}>Importer</Text>
-                  </TouchableOpacity>
-                </View>
-                </View>
-              </ScrollView>
+                <TouchableOpacity
+                  style={[styles.dataImportButton, styles.saveButton]}
+                  onPress={handleImportData}
+                >
+                  <Text style={styles.saveButtonText}>Importer</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </Modal>
@@ -1440,13 +1439,15 @@ const styles = StyleSheet.create({
   dataImportModal: {
     maxHeight: '90%',
     margin: 20,
-  },
-  dataImportScrollView: {
-    maxHeight: '100%',
+    flex: 1,
   },
   dataImportButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
   },
   dataImportButton: {
     flex: 1,
@@ -1454,5 +1455,21 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     marginHorizontal: 5,
+  },
+  cancelButton: {
+    backgroundColor: '#FF453A',
+  },
+  saveButton: {
+    backgroundColor: '#00D4FF',
+  },
+  cancelButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
