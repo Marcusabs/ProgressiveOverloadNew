@@ -323,57 +323,6 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleExportData = async () => {
-    try {
-      const db = getDatabase();
-      
-      Alert.alert(
-        'Export Træningsdata',
-        'Export af alle dine træningsdata som backup fil. Dette inkluderer træninger, øvelser, sæt og fremskridt.',
-        [
-          { text: 'Annuller', style: 'cancel' },
-          {
-            text: 'Export',
-            onPress: async () => {
-              try {
-                // Hent alle data
-                const workouts = await db.getAllAsync('SELECT * FROM workouts ORDER BY date DESC');
-                const exercises = await db.getAllAsync('SELECT * FROM exercises');
-                const sets = await db.getAllAsync('SELECT * FROM sets ORDER BY created_at DESC');
-                const progress = await db.getAllAsync('SELECT * FROM progress_data ORDER BY date DESC');
-                
-                const exportData = {
-                  exportDate: new Date().toISOString(),
-                  version: '1.0',
-                  summary: {
-                    totalWorkouts: workouts.length,
-                    totalExercises: exercises.length,
-                    totalSets: sets.length,
-                    totalProgress: progress.length
-                  },
-                  data: { workouts, exercises, sets, progress }
-                };
-                
-                console.log('📤 Export data ready:', exportData);
-                
-                Alert.alert(
-                  '✅ Data Eksporteret',
-                  `📊 Eksporteret:\n• ${workouts.length} træninger\n• ${exercises.length} øvelser\n• ${sets.length} sæt\n• ${progress.length} fremskridt poster\n\nData er logget til konsollen for udvikling.`,
-                  [{ text: 'OK' }]
-                );
-              } catch (error) {
-                Alert.alert('❌ Export Fejl', 'Der opstod en fejl under eksporten.');
-              }
-            }
-          }
-        ]
-      );
-    } catch (error) {
-      console.error('Error preparing export:', error);
-      Alert.alert('Fejl', 'Kunne ikke forberede data export');
-    }
-  };
-
   const handleBackupData = async () => {
     try {
       // Simuler backup til cloud
