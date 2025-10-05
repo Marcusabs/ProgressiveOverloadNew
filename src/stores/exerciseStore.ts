@@ -1119,12 +1119,23 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
       await db.execAsync('BEGIN TRANSACTION');
       
       try {
+        // 🗑️ CLEAR ALL EXISTING DATA FIRST
+        console.log('🗑️ Clearing existing data before import...');
+        await db.runAsync('DELETE FROM sets');
+        await db.runAsync('DELETE FROM workout_exercises');
+        await db.runAsync('DELETE FROM workouts');
+        await db.runAsync('DELETE FROM progress_data');
+        await db.runAsync('DELETE FROM exercises');
+        await db.runAsync('DELETE FROM training_sessions');
+        await db.runAsync('DELETE FROM muscle_groups');
+        console.log('✅ Existing data cleared');
+        
         // Import muscle groups
         if (data.muscle_groups && data.muscle_groups.length > 0) {
           console.log(`📊 Importing ${data.muscle_groups.length} muscle groups...`);
           for (const mg of data.muscle_groups) {
             await db.runAsync(`
-              INSERT OR REPLACE INTO muscle_groups (id, name, color, icon, created_at)
+              INSERT INTO muscle_groups (id, name, color, icon, created_at)
               VALUES (?, ?, ?, ?, ?)
             `, [mg.id, mg.name, mg.color, mg.icon, mg.created_at]);
           }
@@ -1135,7 +1146,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
           console.log(`📊 Importing ${data.training_sessions.length} training sessions...`);
           for (const ts of data.training_sessions) {
             await db.runAsync(`
-              INSERT OR REPLACE INTO training_sessions (id, name, muscle_group_id, description, is_active, created_at)
+              INSERT INTO training_sessions (id, name, muscle_group_id, description, is_active, created_at)
               VALUES (?, ?, ?, ?, ?, ?)
             `, [ts.id, ts.name, ts.muscle_group_id, ts.description, ts.is_active, ts.created_at]);
           }
@@ -1146,7 +1157,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
           console.log(`📊 Importing ${data.exercises.length} exercises...`);
           for (const ex of data.exercises) {
             await db.runAsync(`
-              INSERT OR REPLACE INTO exercises (id, name, muscle_group_id, session_id, order_index, description, equipment, difficulty, created_at)
+              INSERT INTO exercises (id, name, muscle_group_id, session_id, order_index, description, equipment, difficulty, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             `, [ex.id, ex.name, ex.muscle_group_id, ex.session_id, ex.order_index, ex.description, ex.equipment, ex.difficulty, ex.created_at]);
           }
@@ -1157,7 +1168,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
           console.log(`📊 Importing ${data.workouts.length} workouts...`);
           for (const wo of data.workouts) {
             await db.runAsync(`
-              INSERT OR REPLACE INTO workouts (id, session_id, name, date, duration, notes, completed, created_at)
+              INSERT INTO workouts (id, session_id, name, date, duration, notes, completed, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `, [wo.id, wo.session_id, wo.name, wo.date, wo.duration, wo.notes, wo.completed, wo.created_at]);
           }
@@ -1168,7 +1179,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
           console.log(`📊 Importing ${data.workout_exercises.length} workout exercises...`);
           for (const we of data.workout_exercises) {
             await db.runAsync(`
-              INSERT OR REPLACE INTO workout_exercises (id, workout_id, exercise_id, order_index, completed)
+              INSERT INTO workout_exercises (id, workout_id, exercise_id, order_index, completed)
               VALUES (?, ?, ?, ?, ?)
             `, [we.id, we.workout_id, we.exercise_id, we.order_index, we.completed]);
           }
@@ -1179,7 +1190,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
           console.log(`📊 Importing ${data.sets.length} sets...`);
           for (const s of data.sets) {
             await db.runAsync(`
-              INSERT OR REPLACE INTO sets (id, workout_exercise_id, reps, weight, completed, order_index)
+              INSERT INTO sets (id, workout_exercise_id, reps, weight, completed, order_index)
               VALUES (?, ?, ?, ?, ?, ?)
             `, [s.id, s.workout_exercise_id, s.reps, s.weight, s.completed, s.order_index]);
           }
@@ -1190,7 +1201,7 @@ export const useExerciseStore = create<ExerciseState>((set, get) => ({
           console.log(`📊 Importing ${data.progress_data.length} progress records...`);
           for (const pd of data.progress_data) {
             await db.runAsync(`
-              INSERT OR REPLACE INTO progress_data (id, exercise_id, workout_id, date, max_weight, total_volume, one_rep_max)
+              INSERT INTO progress_data (id, exercise_id, workout_id, date, max_weight, total_volume, one_rep_max)
               VALUES (?, ?, ?, ?, ?, ?, ?)
             `, [pd.id, pd.exercise_id, pd.workout_id, pd.date, pd.max_weight, pd.total_volume, pd.one_rep_max]);
           }
