@@ -12,6 +12,7 @@ import {
   Platform,
   StatusBar,
   Dimensions,
+  Clipboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -97,17 +98,18 @@ export default function ProfileScreen() {
       const { exportAllData } = useExerciseStore.getState();
       const dataJson = await exportAllData();
       
-      // In a real app, you would save this to a file or share it
-      // For now, we'll show it in an alert for copying
+      // Automatisk kopier til udklipsholder
+      await Clipboard.setString(dataJson);
+      
       Alert.alert(
-        'Data Exportet',
-        `Data er eksporteret. JSON data er ${dataJson.length} karakterer lang.`,
+        '✅ Data Eksporteret & Kopieret!',
+        `📊 JSON data (${dataJson.length} karakterer) er eksporteret og automatisk kopieret til udklipsholderen!\n\n📋 Du kan nu indsætte det i Import Data feltet.`,
         [
           { text: 'OK' }
         ]
       );
       
-      console.log('Exported data:', dataJson);
+      console.log('Exported and copied data:', dataJson);
     } catch (error) {
       console.error('Export failed:', error);
       Alert.alert('Fejl', 'Kunne ikke eksportere data');
@@ -977,20 +979,38 @@ export default function ProfileScreen() {
                   Indtast JSON data fra den gamle app for at gendanne alle træningsdata:
                 </Text>
                 
-                <TextInput
-                  style={[styles.dataImportInput, { 
-                    backgroundColor: theme.colors.card, 
-                    color: theme.colors.text,
-                    borderColor: theme.colors.border 
-                  }]}
-                  value={importData}
-                  onChangeText={setImportData}
-                  placeholder="Indtast JSON data her..."
-                  placeholderTextColor={theme.colors.textSecondary}
-                  multiline
-                  numberOfLines={10}
-                  textAlignVertical="top"
-                />
+                <View style={styles.dataImportInputContainer}>
+                  <TextInput
+                    style={[styles.dataImportInput, { 
+                      backgroundColor: theme.colors.card, 
+                      color: theme.colors.text,
+                      borderColor: theme.colors.border 
+                    }]}
+                    value={importData}
+                    onChangeText={setImportData}
+                    placeholder="Indtast JSON data her..."
+                    placeholderTextColor={theme.colors.textSecondary}
+                    multiline
+                    numberOfLines={10}
+                    textAlignVertical="top"
+                  />
+                  
+                  <TouchableOpacity
+                    style={[styles.pasteButton, { backgroundColor: theme.colors.primary }]}
+                    onPress={async () => {
+                      try {
+                        const clipboardContent = await Clipboard.getString();
+                        setImportData(clipboardContent);
+                        Alert.alert('✅ Indsat!', 'Data fra udklipsholderen er indsat!');
+                      } catch (error) {
+                        Alert.alert('Fejl', 'Kunne ikke hente data fra udklipsholder');
+                      }
+                    }}
+                  >
+                    <Ionicons name="clipboard" size={16} color="#fff" />
+                    <Text style={styles.pasteButtonText}>Indsæt</Text>
+                  </TouchableOpacity>
+                </View>
                 
                 <View style={styles.dataImportButtons}>
                   <TouchableOpacity
@@ -1387,13 +1407,33 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     lineHeight: 24,
   },
+  dataImportInputContainer: {
+    position: 'relative',
+    marginBottom: 20,
+  },
   dataImportInput: {
     borderWidth: 1,
     borderRadius: 8,
     padding: 12,
     fontSize: 14,
     minHeight: 200,
-    marginBottom: 20,
+    paddingRight: 80, // Space for paste button
+  },
+  pasteButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  pasteButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 4,
   },
   dataImportButtons: {
     flexDirection: 'row',
