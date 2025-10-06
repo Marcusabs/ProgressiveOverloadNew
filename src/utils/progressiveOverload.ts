@@ -14,6 +14,25 @@ export const calculateTotalVolume = (sets: Array<{ weight: number; reps: number 
   return sets.reduce((total, set) => total + (set.weight * set.reps), 0);
 };
 
+// Helper function to calculate average reps for sets with same weight
+export const calculateAverageRepsForWeight = (sets: Array<{ weight: number; reps: number }>): Array<{ weight: number; avgReps: number; setCount: number }> => {
+  const weightGroups: { [weight: number]: { totalReps: number; count: number } } = {};
+  
+  sets.forEach(set => {
+    if (!weightGroups[set.weight]) {
+      weightGroups[set.weight] = { totalReps: 0, count: 0 };
+    }
+    weightGroups[set.weight].totalReps += set.reps;
+    weightGroups[set.weight].count += 1;
+  });
+  
+  return Object.entries(weightGroups).map(([weight, data]) => ({
+    weight: parseFloat(weight),
+    avgReps: Math.round((data.totalReps / data.count) * 100) / 100, // Round to 2 decimal places
+    setCount: data.count
+  }));
+};
+
 export interface ProgressiveOverloadSuggestion {
   exerciseId: string;
   exerciseName: string;
@@ -68,16 +87,30 @@ export const calculateProgressiveOverload = (
   const lastOneRepMax = Math.max(...lastWorkout.sets.map(set => 
     calculateOneRepMax(set.weight, set.reps)
   ));
+  
+  // Calculate average reps for sets with same weight
+  const lastWeightAverages = calculateAverageRepsForWeight(lastWorkout.sets);
+  const lastMaxWeightData = lastWeightAverages
+    .filter(w => w.weight === lastMaxWeight)
+    .sort((a, b) => b.avgReps - a.avgReps)[0];
+  const lastHeaviestAvgReps = lastMaxWeightData?.avgReps || lastMaxReps;
 
   // Calculate current workout performance
   const currentMaxWeight = Math.max(...(currentWorkout.sets || []).map(set => set.weight));
   const currentMaxReps = Math.max(...(currentWorkout.sets || []).map(set => set.reps));
   const currentTotalVolume = calculateTotalVolume(currentWorkout.sets || []);
+  
+  // Calculate average reps for current workout sets with same weight
+  const currentWeightAverages = calculateAverageRepsForWeight(currentWorkout.sets || []);
+  const currentMaxWeightData = currentWeightAverages
+    .filter(w => w.weight === currentMaxWeight)
+    .sort((a, b) => b.avgReps - a.avgReps)[0];
+  const currentHeaviestAvgReps = currentMaxWeightData?.avgReps || currentMaxReps;
 
   // Progressive overload logic
   if (!currentWorkout.sets || currentWorkout.sets.length === 0) {
-    // No sets completed yet - suggest based on last workout
-    if (lastMaxReps >= 12) {
+    // No sets completed yet - suggest based on last workout (using average reps)
+    if (lastHeaviestAvgReps >= 12) {
       // Last workout was high reps, increase weight
       return {
         exerciseId,
@@ -85,18 +118,18 @@ export const calculateProgressiveOverload = (
         currentMaxWeight: lastMaxWeight,
         suggestedWeight: lastMaxWeight + 2.5,
         suggestedReps: 8,
-        reason: 'Last workout was high reps. Increase weight and reduce reps.',
+        reason: `Last workout averaged ${lastHeaviestAvgReps} reps at max weight. Increase weight and reduce reps.`,
         type: 'weight'
       };
-    } else if (lastMaxReps >= 8) {
+    } else if (lastHeaviestAvgReps >= 8) {
       // Moderate reps, increase weight slightly
       return {
         exerciseId,
         exerciseName,
         currentMaxWeight: lastMaxWeight,
         suggestedWeight: lastMaxWeight + 2.5,
-        suggestedReps: lastMaxReps,
-        reason: 'Increase weight by 2.5kg from last workout.',
+        suggestedReps: Math.round(lastHeaviestAvgReps),
+        reason: `Last workout averaged ${lastHeaviestAvgReps} reps. Increase weight by 2.5kg.`,
         type: 'weight'
       };
     } else {
@@ -106,8 +139,8 @@ export const calculateProgressiveOverload = (
         exerciseName,
         currentMaxWeight: lastMaxWeight,
         suggestedWeight: lastMaxWeight,
-        suggestedReps: lastMaxReps + 1,
-        reason: 'Increase reps by 1 from last workout.',
+        suggestedReps: Math.round(lastHeaviestAvgReps) + 1,
+        reason: `Last workout averaged ${lastHeaviestAvgReps} reps. Increase reps by 1.`,
         type: 'reps'
       };
     }
@@ -115,7 +148,7 @@ export const calculateProgressiveOverload = (
 
   // Analyze current workout performance
   const weightImprovement = currentMaxWeight - lastMaxWeight;
-  const repsImprovement = currentMaxReps - lastMaxReps;
+  const repsImprovement = currentHeaviestAvgReps - lastHeaviestAvgReps; // Use average reps comparison
   const volumeImprovement = currentTotalVolume - lastTotalVolume;
 
   if (weightImprovement > 0) {
@@ -130,14 +163,14 @@ export const calculateProgressiveOverload = (
       type: 'weight'
     };
   } else if (repsImprovement > 0) {
-    // Successfully increased reps
+    // Successfully increased reps (average)
     return {
       exerciseId,
       exerciseName,
       currentMaxWeight,
       suggestedWeight: currentMaxWeight + 2.5,
-      suggestedReps: currentMaxReps,
-      reason: `Good! You increased reps by ${repsImprovement}. Now try increasing weight.`,
+      suggestedReps: Math.round(currentHeaviestAvgReps),
+      reason: `Good! You increased average reps from ${lastHeaviestAvgReps} to ${currentHeaviestAvgReps} (+${repsImprovement.toFixed(1)}). Now try increasing weight.`,
       type: 'weight'
     };
   } else if (volumeImprovement > 0) {
@@ -158,8 +191,8 @@ export const calculateProgressiveOverload = (
       exerciseName,
       currentMaxWeight,
       suggestedWeight: currentMaxWeight,
-      suggestedReps: currentMaxReps,
-      reason: 'Maintain current weight and reps. Focus on form and consistency.',
+      suggestedReps: Math.round(currentHeaviestAvgReps),
+      reason: `Maintain current weight and average ${currentHeaviestAvgReps} reps. Focus on form and consistency.`,
       type: 'maintain'
     };
   }

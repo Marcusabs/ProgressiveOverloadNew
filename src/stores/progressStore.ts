@@ -103,11 +103,13 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
         
         const maxWeight = Math.max(...exercise.sets.map(set => set.weight));
         const totalVolume = exercise.sets.reduce((total, set) => total + (set.weight * set.reps), 0);
-        const oneRepMax = Math.max(...exercise.sets.map(set => {
-          if (set.reps === 1) return set.weight;
-          if (set.reps <= 0) return 0;
-          return Math.round(set.weight * (1 + set.reps / 30) * 100) / 100;
-        }));
+        
+        // Calculate average reps for sets with same weight for one-rep max calculation
+        const heaviestWeightSets = exercise.sets.filter(set => set.weight === maxWeight);
+        const avgRepsAtMaxWeight = heaviestWeightSets.length > 0 
+          ? heaviestWeightSets.reduce((sum, set) => sum + set.reps, 0) / heaviestWeightSets.length
+          : 0;
+        const oneRepMax = Math.round(maxWeight * (1 + avgRepsAtMaxWeight / 30) * 100) / 100;
 
         await db.runAsync(`
           INSERT INTO progress_data (id, exercise_id, workout_id, date, max_weight, total_volume, one_rep_max)
